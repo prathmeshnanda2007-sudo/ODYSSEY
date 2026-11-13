@@ -357,11 +357,11 @@ export const PlanetaryMeshViewer3D: React.FC<PlanetaryMeshViewer3DProps> = ({
     <div className="flex flex-col h-full bg-mars-900 rounded-xl border border-mars-700/60 overflow-hidden relative">
       {/* 3D Header Toolbar */}
       <div className="bg-mars-800/80 px-4 py-2 border-b border-mars-700/50 flex items-center justify-between text-xs font-mono">
-        <div className="flex items-center space-x-2 text-slate-300">
-          <Box className="w-4 h-4 text-cyan-400" />
-          <span className="font-semibold text-white">PLANETARY 3D DIGITAL SURFACE MODEL</span>
+        <div className="flex items-center space-x-2 text-slate-300 min-w-0">
+          <Box className="w-4 h-4 text-cyan-400 flex-shrink-0" />
+          <span className="font-semibold text-white truncate text-[11px]">3D SURFACE MODEL</span>
           {elevationRange && (
-            <span className="text-[11px] text-emerald-400 bg-emerald-950/70 px-2 py-0.5 rounded border border-emerald-800/60">
+            <span className="text-[10px] text-emerald-400 bg-emerald-950/70 px-1.5 py-0.5 rounded border border-emerald-800/60 whitespace-nowrap hidden sm:inline">
               {elevationRange.min}m → {elevationRange.max}m
             </span>
           )}

@@ -2,9 +2,11 @@ import subprocess
 import sys
 import time
 import os
+import signal
 
 def start_backend(root_dir):
     print("[ODYSSEY] Starting backend on http://127.0.0.1:8000...")
+    backend_dir = os.path.join(root_dir, "backend")
     return subprocess.Popen(
         [
             sys.executable,
@@ -16,6 +18,8 @@ def start_backend(root_dir):
             "--port",
             "8000",
             "--reload",
+            "--reload-dir",
+            backend_dir,
         ],
         cwd=root_dir,
     )
@@ -29,15 +33,21 @@ def start_frontend(frontend_dir):
     )
 
 def main():
+    # Ignore SIGINT so uvicorn reloads or child signals never kill the supervisor
+    try:
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
+    except Exception:
+        pass
+
     root_dir = os.path.abspath(os.path.dirname(__file__))
     frontend_dir = os.path.join(root_dir, "frontend")
 
     backend = start_backend(root_dir)
     frontend = start_frontend(frontend_dir)
 
-    print("[ODYSSEY] Supervisor active. Monitoring services...")
-    try:
-        while True:
+    print("[ODYSSEY] Robust Supervisor active. Monitoring services...")
+    while True:
+        try:
             time.sleep(2)
             if backend.poll() is not None:
                 print(f"[ODYSSEY] Backend exited ({backend.poll()}). Auto-restarting...")
@@ -45,13 +55,8 @@ def main():
             if frontend.poll() is not None:
                 print(f"[ODYSSEY] Frontend exited ({frontend.poll()}). Auto-restarting...")
                 frontend = start_frontend(frontend_dir)
-    except KeyboardInterrupt:
-        print("[ODYSSEY] Shutting down supervisor...")
-    finally:
-        if backend and backend.poll() is None:
-            backend.terminate()
-        if frontend and frontend.poll() is None:
-            frontend.terminate()
+        except Exception as e:
+            time.sleep(1)
 
 if __name__ == "__main__":
     main()
