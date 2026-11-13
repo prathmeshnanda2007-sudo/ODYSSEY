@@ -21,7 +21,13 @@ class PlanResult:
     message: str
 
     def to_dict(self) -> Dict[str, Any]:
-        return asdict(self)
+        return {
+            "success": bool(self.success),
+            "path_coords": [(int(r), int(c)) for r, c in self.path_coords],
+            "path_length_steps": int(self.path_length_steps),
+            "total_cost": round(float(self.total_cost), 2),
+            "message": str(self.message),
+        }
 
 
 class IPathPlanner(ABC):
@@ -88,7 +94,7 @@ class AStarPlanner(IPathPlanner):
                     current = came_from[current]
                     path.append(current)
                 path.reverse()
-                total_cost = g_score[goal]
+                total_cost = float(g_score[goal])
                 return PlanResult(
                     success=True,
                     path_coords=path,

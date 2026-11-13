@@ -253,10 +253,10 @@ def plan_path_endpoint(
     plan_result = planner.plan(costmap, (start_r, start_c), (goal_r, goal_c))
 
     return {
-        "success": plan_result.success,
+        "success": bool(plan_result.success),
         "plan": plan_result.to_dict(),
-        "start": [start_r, start_c],
-        "goal": [goal_r, goal_c],
+        "start": [int(start_r), int(start_c)],
+        "goal": [int(goal_r), int(goal_c)],
     }
 
 
