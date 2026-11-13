@@ -106,6 +106,7 @@ export interface ScienceTarget {
 export interface TerrainAnalysisResponse {
   dem_id: string;
   slope_preview_url: string;
+  costmap_preview_url?: string;
   terrain_summary: TerrainSummary;
   hazard_summary: HazardSummary;
   uncertainty_summary: UncertaintySummary;

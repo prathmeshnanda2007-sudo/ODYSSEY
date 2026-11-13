@@ -204,6 +204,18 @@ def analyze_terrain_endpoint(dem_id: str = Form(...)) -> Dict[str, Any]:
     hazard_detector = GeometricHazardDetector()
     hazard_res = hazard_detector.detect_hazards(slope=slope, ruggedness=res["ruggedness"])
 
+    # Generate traversability costmap & preview image
+    cost_gen = TraversabilityCostmapGenerator()
+    costmap = cost_gen.generate_costmap(slope=slope, hazard_mask=hazard_res["hazard_mask"], ruggedness=res["ruggedness"])
+    norm_cost = np.clip((costmap - 1.0) / 10.0 * 255.0, 0, 255).astype(np.uint8)
+    cost_color = cv2.applyColorMap(norm_cost, cv2.COLORMAP_TURBO)
+    cost_color[costmap >= 1e5] = [20, 20, 100]
+    cost_rgb = cv2.cvtColor(cost_color, cv2.COLOR_BGR2RGB)
+
+    costmap_preview_name = f"{dem_id}_costmap_preview.png"
+    costmap_preview_path = os.path.join(STATIC_OUTPUT_DIR, costmap_preview_name)
+    Image.fromarray(cost_rgb).save(costmap_preview_path)
+
     # Uncertainty
     unc_estimator = GeospatialUncertaintyEstimator()
     unc_res = unc_estimator.estimate_uncertainty(dem=dem_data, slope=slope)
@@ -215,6 +227,7 @@ def analyze_terrain_endpoint(dem_id: str = Form(...)) -> Dict[str, Any]:
     return {
         "dem_id": dem_id,
         "slope_preview_url": f"/outputs/{slope_preview_name}",
+        "costmap_preview_url": f"/outputs/{costmap_preview_name}",
         "terrain_summary": res["summary"],
         "hazard_summary": hazard_res["summary"],
         "uncertainty_summary": unc_res["summary"],

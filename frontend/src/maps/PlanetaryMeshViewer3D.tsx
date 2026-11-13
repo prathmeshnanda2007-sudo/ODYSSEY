@@ -6,6 +6,8 @@ interface PlanetaryMeshViewer3DProps {
   heightmapUrl?: string;
   textureUrl?: string;
   pathCoords: [number, number][];
+  startCoords?: [number, number];
+  goalCoords?: [number, number];
   elevationRange?: { min: number; max: number };
 }
 
@@ -13,6 +15,8 @@ export const PlanetaryMeshViewer3D: React.FC<PlanetaryMeshViewer3DProps> = ({
   heightmapUrl,
   textureUrl,
   pathCoords,
+  startCoords,
+  goalCoords,
   elevationRange,
 }) => {
   const mountRef = useRef<HTMLDivElement>(null);
@@ -26,6 +30,8 @@ export const PlanetaryMeshViewer3D: React.FC<PlanetaryMeshViewer3DProps> = ({
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const meshRef = useRef<THREE.Mesh | null>(null);
   const pathLineRef = useRef<THREE.Line | null>(null);
+  const startMarkerRef = useRef<THREE.Group | null>(null);
+  const goalMarkerRef = useRef<THREE.Group | null>(null);
   const originalElevationsRef = useRef<Float32Array | null>(null);
 
   // Orbit control state
@@ -308,6 +314,93 @@ export const PlanetaryMeshViewer3D: React.FC<PlanetaryMeshViewer3DProps> = ({
     posAttr.needsUpdate = true;
     geometry.computeVertexNormals();
   }, [exaggeration]);
+
+  // Render 3D Start & Goal Waypoint Pins
+  useEffect(() => {
+    if (!sceneRef.current) return;
+    const scene = sceneRef.current;
+    const elevations = originalElevationsRef.current;
+    const segments = 127;
+
+    // Helper to calculate 3D position
+    const getPos3D = (coords: [number, number]) => {
+      const [r, c] = coords;
+      const x = (c / 512.0) * 100 - 50;
+      const z = (r / 512.0) * 100 - 50;
+      let y = 0.5;
+      if (elevations) {
+        const gridR = Math.min(segments, Math.floor((r / 512.0) * segments));
+        const gridC = Math.min(segments, Math.floor((c / 512.0) * segments));
+        const elev = elevations[gridR * (segments + 1) + gridC] || 0.0;
+        y = elev * 12.0 * exaggeration;
+      }
+      return { x, y, z };
+    };
+
+    // 1. Start Marker (Rover - Green Beacon)
+    if (startMarkerRef.current) {
+      scene.remove(startMarkerRef.current);
+      startMarkerRef.current = null;
+    }
+    if (startCoords) {
+      const pos = getPos3D(startCoords);
+      const group = new THREE.Group();
+
+      // Vertical stem
+      const stemGeom = new THREE.CylinderGeometry(0.2, 0.2, 4, 8);
+      const stemMat = new THREE.MeshBasicMaterial({ color: 0x10b981 });
+      const stem = new THREE.Mesh(stemGeom, stemMat);
+      stem.position.y = 2;
+      group.add(stem);
+
+      // Top sphere
+      const headGeom = new THREE.SphereGeometry(1.2, 16, 16);
+      const headMat = new THREE.MeshStandardMaterial({
+        color: 0x10b981,
+        emissive: 0x059669,
+        emissiveIntensity: 0.6,
+      });
+      const head = new THREE.Mesh(headGeom, headMat);
+      head.position.y = 4.5;
+      group.add(head);
+
+      group.position.set(pos.x, pos.y, pos.z);
+      scene.add(group);
+      startMarkerRef.current = group;
+    }
+
+    // 2. Goal Marker (Target - Cyan Diamond Beacon)
+    if (goalMarkerRef.current) {
+      scene.remove(goalMarkerRef.current);
+      goalMarkerRef.current = null;
+    }
+    if (goalCoords) {
+      const pos = getPos3D(goalCoords);
+      const group = new THREE.Group();
+
+      // Vertical stem
+      const stemGeom = new THREE.CylinderGeometry(0.2, 0.2, 5, 8);
+      const stemMat = new THREE.MeshBasicMaterial({ color: 0x00d2ff });
+      const stem = new THREE.Mesh(stemGeom, stemMat);
+      stem.position.y = 2.5;
+      group.add(stem);
+
+      // Top Octahedron Diamond
+      const headGeom = new THREE.OctahedronGeometry(1.4, 0);
+      const headMat = new THREE.MeshStandardMaterial({
+        color: 0x00d2ff,
+        emissive: 0x0284c7,
+        emissiveIntensity: 0.7,
+      });
+      const head = new THREE.Mesh(headGeom, headMat);
+      head.position.y = 5.5;
+      group.add(head);
+
+      group.position.set(pos.x, pos.y, pos.z);
+      scene.add(group);
+      goalMarkerRef.current = group;
+    }
+  }, [startCoords, goalCoords, exaggeration]);
 
   // Render 3D Path Waypoint Ribbon
   useEffect(() => {

@@ -17,6 +17,8 @@ interface SegmentationPanelProps {
   onMcSamplesChange: (n: number) => void;
   onRunSegmentation: () => void;
   canRun: boolean;
+  activeLayer?: string;
+  onSelectLayer?: (layer: 'segmentation' | 'uncertainty') => void;
 }
 
 const CLASS_METADATA = [
@@ -35,6 +37,8 @@ export const SegmentationPanel: React.FC<SegmentationPanelProps> = ({
   onMcSamplesChange,
   onRunSegmentation,
   canRun,
+  activeLayer,
+  onSelectLayer,
 }) => {
   const classDistributions = segmentationResult?.class_distributions ?? [];
   const inferenceLatency = segmentationResult?.inference_latency_ms ?? null;
@@ -135,7 +139,7 @@ export const SegmentationPanel: React.FC<SegmentationPanelProps> = ({
         )}
       </div>
 
-      {/* Latency + layer hint (shows after segmentation) */}
+      {/* Latency + Interactive Layer Switching (shows after segmentation) */}
       {segmentationResult && (
         <div className="space-y-2">
           <div className="flex items-center justify-between text-[10px] font-mono text-slate-400 bg-black/40 rounded px-2 py-1 border border-mars-700/30">
@@ -150,10 +154,34 @@ export const SegmentationPanel: React.FC<SegmentationPanelProps> = ({
               {inferenceLatency!.toFixed(0)} ms
             </span>
           </div>
-          <div className="text-[10px] font-mono text-slate-400 flex items-center space-x-1.5 bg-violet-950/30 p-2 rounded border border-violet-800/30">
-            <Layers className="w-3 h-3 text-violet-400 flex-shrink-0" />
-            <span>Switch to <strong className="text-violet-300">AI Seg</strong> or <strong className="text-cyan-300">Uncertainty σ²</strong> layer in the viewport above</span>
-          </div>
+
+          {/* Interactive Layer Buttons */}
+          {onSelectLayer && (
+            <div className="flex items-center space-x-1 bg-mars-950/80 rounded-lg p-0.5 border border-mars-700/40 text-xs font-mono">
+              <button
+                onClick={() => onSelectLayer('segmentation')}
+                className={`flex-1 px-2 py-1.5 rounded flex items-center justify-center space-x-1.5 transition ${
+                  activeLayer === 'segmentation'
+                    ? 'bg-violet-800 text-white font-bold ring-1 ring-violet-500'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Layers className="w-3 h-3 text-violet-400" />
+                <span>AI Seg Map</span>
+              </button>
+              <button
+                onClick={() => onSelectLayer('uncertainty')}
+                className={`flex-1 px-2 py-1.5 rounded flex items-center justify-center space-x-1.5 transition ${
+                  activeLayer === 'uncertainty'
+                    ? 'bg-cyan-900 text-white font-bold ring-1 ring-cyan-500'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Gauge className="w-3 h-3 text-cyan-400" />
+                <span>Epistemic σ²</span>
+              </button>
+            </div>
+          )}
         </div>
       )}
 

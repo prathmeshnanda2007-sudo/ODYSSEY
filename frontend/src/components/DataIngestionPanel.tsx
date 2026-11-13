@@ -5,6 +5,7 @@ import { DatasetRecord, uploadRasterFile } from '../services/api';
 interface DataIngestionPanelProps {
   imageryRecord: DatasetRecord | null;
   demRecord: DatasetRecord | null;
+  demPrimaryRecord?: DatasetRecord | null;
   demOffsetRecord: DatasetRecord | null;
   onSelectImagery: (rec: DatasetRecord) => void;
   onSelectDem: (rec: DatasetRecord) => void;
@@ -15,6 +16,7 @@ interface DataIngestionPanelProps {
 export const DataIngestionPanel: React.FC<DataIngestionPanelProps> = ({
   imageryRecord,
   demRecord,
+  demPrimaryRecord,
   demOffsetRecord,
   onSelectImagery,
   onSelectDem,
@@ -128,13 +130,17 @@ export const DataIngestionPanel: React.FC<DataIngestionPanelProps> = ({
             <span className="text-xs font-mono font-medium text-slate-200">DIGITAL ELEVATION MODEL (DEM)</span>
           </div>
           <div className="flex items-center space-x-2">
-            {demOffsetRecord && (
+            {demOffsetRecord && demPrimaryRecord && (
               <button
-                onClick={() => onSelectDem(demOffsetRecord)}
-                className="text-[10px] font-mono px-2 py-0.5 rounded bg-mars-700/70 hover:bg-mars-600 text-amber-300 border border-amber-800/40"
-                title="Select shifted DEM to test spatial incompatibility warning"
+                onClick={() => onSelectDem(demRecord?.id === demOffsetRecord.id ? demPrimaryRecord : demOffsetRecord)}
+                className={`text-[10px] font-mono px-2 py-0.5 rounded border transition ${
+                  demRecord?.id === demOffsetRecord.id
+                    ? 'bg-amber-950 text-amber-300 border-amber-600 font-bold'
+                    : 'bg-mars-700/70 hover:bg-mars-600 text-amber-300 border-amber-800/40'
+                }`}
+                title={demRecord?.id === demOffsetRecord.id ? "Click to restore aligned Primary Jezero DEM" : "Click to test Offset DEM and observe incompatibility warning"}
               >
-                Test Offset DEM
+                {demRecord?.id === demOffsetRecord.id ? '← Primary DEM' : 'Test Offset DEM'}
               </button>
             )}
             <label className="cursor-pointer text-[11px] font-mono px-2.5 py-1 rounded bg-mars-700 hover:bg-mars-600 text-amber-300 border border-amber-800/50 flex items-center space-x-1 transition">

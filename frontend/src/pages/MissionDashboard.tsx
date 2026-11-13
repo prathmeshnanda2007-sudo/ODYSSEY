@@ -3,7 +3,7 @@ import { Header } from '../components/Header';
 import { DataIngestionPanel } from '../components/DataIngestionPanel';
 import { CompatibilityInspector } from '../components/CompatibilityInspector';
 import { SegmentationPanel } from '../components/SegmentationPanel';
-import { ViewportHub } from '../maps/ViewportHub';
+import { ViewportHub, LayerKey } from '../maps/ViewportHub';
 import { PlanetaryMeshViewer3D } from '../maps/PlanetaryMeshViewer3D';
 import { TelemetryOverview } from '../dashboard/TelemetryOverview';
 import {
@@ -27,6 +27,7 @@ export const MissionDashboard: React.FC = () => {
   // Ingestion state
   const [imageryRecord, setImageryRecord] = useState<DatasetRecord | null>(null);
   const [demRecord, setDemRecord] = useState<DatasetRecord | null>(null);
+  const [demPrimaryRecord, setDemPrimaryRecord] = useState<DatasetRecord | null>(null);
   const [demOffsetRecord, setDemOffsetRecord] = useState<DatasetRecord | null>(null);
 
   // Validation & Processing
@@ -41,11 +42,12 @@ export const MissionDashboard: React.FC = () => {
   const [pathPlan, setPathPlan] = useState<PathPlanResponse | null>(null);
   const [isPlanning, setIsPlanning] = useState<boolean>(false);
 
-  // Phase 2: AI Segmentation state
+  // Phase 2: AI Segmentation state & active visualization layer
   const [segmentationResult, setSegmentationResult] = useState<SegmentationResult | null>(null);
   const [isSegmenting, setIsSegmenting] = useState<boolean>(false);
   const [segmentationError, setSegmentationError] = useState<string | null>(null);
   const [mcSamples, setMcSamples] = useState<number>(5);
+  const [activeLayer, setActiveLayer] = useState<LayerKey>('imagery');
 
   const [isLoadingSamples, setIsLoadingSamples] = useState<boolean>(false);
 
@@ -65,6 +67,7 @@ export const MissionDashboard: React.FC = () => {
       const samples = await getSampleDatasets();
       setImageryRecord(samples.imagery);
       setDemRecord(samples.dem);
+      setDemPrimaryRecord(samples.dem);
       setDemOffsetRecord(samples.dem_offset);
 
       // Automatically validate compatibility for initial Jezero sample pair
@@ -118,20 +121,20 @@ export const MissionDashboard: React.FC = () => {
       runValidation(imageryRecord.id, rec.id);
     }
     runTerrainAnalysis(rec.id);
-    // Reset path when changing DEM
     setPathPlan(null);
   };
 
-  const handleRunPlanner = async () => {
+  const handleRunPlanner = async (targetOverride?: [number, number]) => {
     if (!demRecord) return;
+    const target = targetOverride ?? goalCoords;
     setIsPlanning(true);
     try {
       const res = await planPath(
         demRecord.id,
         startCoords[0],
         startCoords[1],
-        goalCoords[0],
-        goalCoords[1]
+        target[0],
+        target[1]
       );
       setPathPlan(res);
     } catch (err) {
@@ -148,6 +151,8 @@ export const MissionDashboard: React.FC = () => {
     try {
       const result = await runSegmentation(imageryRecord.id, demRecord.id, samples);
       setSegmentationResult(result);
+      // Seamlessly switch to AI segmentation layer immediately upon completion
+      setActiveLayer('segmentation');
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setSegmentationError(msg);
@@ -157,12 +162,33 @@ export const MissionDashboard: React.FC = () => {
     }
   };
 
-  // 3D viewer as render prop — avoids Three.js being re-imported inside ViewportHub
+  // Determine active texture for the 3D surface model based on active layer
+  const getActiveTextureUrl = () => {
+    switch (activeLayer) {
+      case 'slope':
+        return terrainAnalysis?.slope_preview_url || demRecord?.preview_url;
+      case 'costmap':
+        return terrainAnalysis?.costmap_preview_url || demRecord?.preview_url;
+      case 'segmentation':
+        return segmentationResult?.segmentation_url || imageryRecord?.preview_url;
+      case 'uncertainty':
+        return segmentationResult?.uncertainty_url || imageryRecord?.preview_url;
+      case 'dem':
+        return demRecord?.preview_url;
+      case 'imagery':
+      default:
+        return imageryRecord?.preview_url || demRecord?.preview_url;
+    }
+  };
+
+  // 3D viewer with active texture and 3D waypoints
   const threeDViewer = (
     <PlanetaryMeshViewer3D
       heightmapUrl={demRecord?.heightmap_url}
-      textureUrl={imageryRecord?.preview_url || demRecord?.preview_url}
+      textureUrl={getActiveTextureUrl()}
       pathCoords={pathPlan?.plan.path_coords || []}
+      startCoords={startCoords}
+      goalCoords={goalCoords}
       elevationRange={
         demRecord?.preview?.stats
           ? {
@@ -183,11 +209,12 @@ export const MissionDashboard: React.FC = () => {
       />
 
       <main className="flex-1 p-5 grid grid-cols-12 gap-5 max-w-[1920px] mx-auto w-full">
-        {/* Left Column: Data Ingestion, Compatibility & Segmentation (3 cols) */}
+        {/* Left Column: Data Ingestion, Compatibility & AI Segmentation (3 cols) */}
         <section className="col-span-12 lg:col-span-3 space-y-4">
           <DataIngestionPanel
             imageryRecord={imageryRecord}
             demRecord={demRecord}
+            demPrimaryRecord={demPrimaryRecord}
             demOffsetRecord={demOffsetRecord}
             onSelectImagery={handleSelectImagery}
             onSelectDem={handleSelectDem}
@@ -209,6 +236,8 @@ export const MissionDashboard: React.FC = () => {
             onMcSamplesChange={setMcSamples}
             onRunSegmentation={() => handleRunSegmentation(mcSamples)}
             canRun={!!(imageryRecord && demRecord) && !isSegmenting}
+            activeLayer={activeLayer}
+            onSelectLayer={(l) => setActiveLayer(l)}
           />
         </section>
 
@@ -218,8 +247,11 @@ export const MissionDashboard: React.FC = () => {
             imageryUrl={imageryRecord?.preview_url}
             demColormapUrl={demRecord?.preview_url}
             slopeUrl={terrainAnalysis?.slope_preview_url}
+            costmapUrl={terrainAnalysis?.costmap_preview_url}
             segmentationUrl={segmentationResult?.segmentation_url}
             uncertaintyUrl={segmentationResult?.uncertainty_url}
+            activeLayer={activeLayer}
+            onSelectLayer={setActiveLayer}
             pathCoords={pathPlan?.plan.path_coords || []}
             scienceTargets={terrainAnalysis?.science_targets || []}
             startCoords={startCoords}
@@ -237,8 +269,11 @@ export const MissionDashboard: React.FC = () => {
             pathPlan={pathPlan}
             startCoords={startCoords}
             goalCoords={goalCoords}
-            onRunPlanner={handleRunPlanner}
-            onSelectTargetGoal={(coords) => setGoalCoords(coords)}
+            onRunPlanner={() => handleRunPlanner()}
+            onSelectTargetGoal={(coords) => {
+              setGoalCoords(coords);
+              handleRunPlanner(coords);
+            }}
             isPlanning={isPlanning}
             isAnalyzing={isAnalyzing}
           />
