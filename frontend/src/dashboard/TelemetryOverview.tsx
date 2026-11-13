@@ -24,6 +24,8 @@ interface TelemetryOverviewProps {
   goalCoords: [number, number];
   onRunPlanner: () => void;
   onSelectTargetGoal: (coords: [number, number]) => void;
+  onSwapStartGoal?: () => void;
+  onClearPath?: () => void;
   isPlanning: boolean;
   isAnalyzing: boolean;
 }
@@ -35,6 +37,8 @@ export const TelemetryOverview: React.FC<TelemetryOverviewProps> = ({
   goalCoords,
   onRunPlanner,
   onSelectTargetGoal,
+  onSwapStartGoal,
+  onClearPath,
   isPlanning,
   isAnalyzing,
 }) => {
@@ -187,15 +191,26 @@ export const TelemetryOverview: React.FC<TelemetryOverviewProps> = ({
           </h3>
         </div>
 
-        <div className="grid grid-cols-2 gap-2 text-[11px] font-mono">
-          <div className="bg-black/40 p-2 rounded border border-mars-700/30">
-            <span className="text-slate-400 block text-[10px]">START (ROVER)</span>
-            <span className="text-emerald-400 font-bold">[{startCoords[0]}, {startCoords[1]}]</span>
+        <div className="flex items-center justify-between">
+          <div className="grid grid-cols-2 gap-2 text-[11px] font-mono flex-1 mr-2">
+            <div className="bg-black/40 p-2 rounded border border-mars-700/30">
+              <span className="text-slate-400 block text-[10px]">START (ROVER)</span>
+              <span className="text-emerald-400 font-bold">[{startCoords[0]}, {startCoords[1]}]</span>
+            </div>
+            <div className="bg-black/40 p-2 rounded border border-mars-700/30">
+              <span className="text-slate-400 block text-[10px]">GOAL (TARGET)</span>
+              <span className="text-cyan-400 font-bold">[{goalCoords[0]}, {goalCoords[1]}]</span>
+            </div>
           </div>
-          <div className="bg-black/40 p-2 rounded border border-mars-700/30">
-            <span className="text-slate-400 block text-[10px]">GOAL (TARGET)</span>
-            <span className="text-cyan-400 font-bold">[{goalCoords[0]}, {goalCoords[1]}]</span>
-          </div>
+          {onSwapStartGoal && (
+            <button
+              onClick={onSwapStartGoal}
+              className="px-2.5 py-3 rounded-lg bg-mars-700/70 hover:bg-mars-600 text-slate-200 border border-mars-600 transition text-sm font-bold font-mono"
+              title="Swap Start and Goal coordinates"
+            >
+              ⇄
+            </button>
+          )}
         </div>
 
         <button
@@ -213,13 +228,24 @@ export const TelemetryOverview: React.FC<TelemetryOverviewProps> = ({
               ? 'bg-emerald-950/60 border-emerald-800 text-emerald-200'
               : 'bg-red-950/60 border-red-800 text-red-200'
           }`}>
-            <div className="flex items-center space-x-1.5 font-bold mb-1">
-              {pathPlan.success ? (
-                <CheckCircle className="w-4 h-4 text-emerald-400" />
-              ) : (
-                <AlertOctagon className="w-4 h-4 text-red-400" />
+            <div className="flex items-center justify-between mb-1">
+              <div className="flex items-center space-x-1.5 font-bold">
+                {pathPlan.success ? (
+                  <CheckCircle className="w-4 h-4 text-emerald-400" />
+                ) : (
+                  <AlertOctagon className="w-4 h-4 text-red-400" />
+                )}
+                <span>{pathPlan.plan.message}</span>
+              </div>
+              {onClearPath && (
+                <button
+                  onClick={onClearPath}
+                  className="text-[10px] text-slate-400 hover:text-white px-1.5 py-0.5 rounded bg-black/40 border border-mars-700/50 transition"
+                  title="Clear computed trajectory"
+                >
+                  Clear
+                </button>
               )}
-              <span>{pathPlan.plan.message}</span>
             </div>
             {pathPlan.success && (
               <div className="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-emerald-800/50 text-[11px]">

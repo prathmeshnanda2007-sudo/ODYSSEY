@@ -124,17 +124,18 @@ export const MissionDashboard: React.FC = () => {
     setPathPlan(null);
   };
 
-  const handleRunPlanner = async (targetOverride?: [number, number]) => {
+  const handleRunPlanner = async (startOverride?: [number, number], goalOverride?: [number, number]) => {
     if (!demRecord) return;
-    const target = targetOverride ?? goalCoords;
+    const start = startOverride ?? startCoords;
+    const goal = goalOverride ?? goalCoords;
     setIsPlanning(true);
     try {
       const res = await planPath(
         demRecord.id,
-        startCoords[0],
-        startCoords[1],
-        target[0],
-        target[1]
+        start[0],
+        start[1],
+        goal[0],
+        goal[1]
       );
       setPathPlan(res);
     } catch (err) {
@@ -142,6 +143,28 @@ export const MissionDashboard: React.FC = () => {
     } finally {
       setIsPlanning(false);
     }
+  };
+
+  const handleSetStart = (coords: [number, number]) => {
+    setStartCoords(coords);
+    handleRunPlanner(coords, goalCoords);
+  };
+
+  const handleSetGoal = (coords: [number, number]) => {
+    setGoalCoords(coords);
+    handleRunPlanner(startCoords, coords);
+  };
+
+  const handleSwapStartGoal = () => {
+    const s = startCoords;
+    const g = goalCoords;
+    setStartCoords(g);
+    setGoalCoords(s);
+    handleRunPlanner(g, s);
+  };
+
+  const handleClearPath = () => {
+    setPathPlan(null);
   };
 
   const handleRunSegmentation = async (samples: number) => {
@@ -256,8 +279,8 @@ export const MissionDashboard: React.FC = () => {
             scienceTargets={terrainAnalysis?.science_targets || []}
             startCoords={startCoords}
             goalCoords={goalCoords}
-            onSetStart={setStartCoords}
-            onSetGoal={setGoalCoords}
+            onSetStart={handleSetStart}
+            onSetGoal={handleSetGoal}
             ThreeDViewer={threeDViewer}
           />
         </section>
@@ -272,8 +295,10 @@ export const MissionDashboard: React.FC = () => {
             onRunPlanner={() => handleRunPlanner()}
             onSelectTargetGoal={(coords) => {
               setGoalCoords(coords);
-              handleRunPlanner(coords);
+              handleRunPlanner(startCoords, coords);
             }}
+            onSwapStartGoal={handleSwapStartGoal}
+            onClearPath={handleClearPath}
             isPlanning={isPlanning}
             isAnalyzing={isAnalyzing}
           />

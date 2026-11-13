@@ -136,9 +136,13 @@ export const PlanetaryMeshViewer3D: React.FC<PlanetaryMeshViewer3DProps> = ({
     };
     window.addEventListener('resize', handleResize);
 
+    const resizeObserver = new ResizeObserver(() => handleResize());
+    resizeObserver.observe(container);
+
     return () => {
       cancelAnimationFrame(animationId);
       window.removeEventListener('resize', handleResize);
+      resizeObserver.disconnect();
       if (rendererRef.current) {
         rendererRef.current.dispose();
         rendererRef.current.domElement.remove();
