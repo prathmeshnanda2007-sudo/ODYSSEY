@@ -82,7 +82,7 @@ export const PlanetaryMeshViewer3D: React.FC<PlanetaryMeshViewer3DProps> = ({
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     rendererRef.current = renderer;
 
-    container.replaceChildren(renderer.domElement);
+    container.appendChild(renderer.domElement);
 
     // Lighting: Simulates Mars NW Sun angle
     const ambientLight = new THREE.AmbientLight(0xffeedd, 0.6);
@@ -127,9 +127,7 @@ export const PlanetaryMeshViewer3D: React.FC<PlanetaryMeshViewer3DProps> = ({
       cancelAnimationFrame(animationId);
       window.removeEventListener('resize', handleResize);
       renderer.dispose();
-      if (container.contains(renderer.domElement)) {
-        container.removeChild(renderer.domElement);
-      }
+      renderer.domElement.remove();
     };
   }, []);
 
@@ -393,16 +391,18 @@ export const PlanetaryMeshViewer3D: React.FC<PlanetaryMeshViewer3DProps> = ({
       </div>
 
       {/* Three.js Canvas Container */}
-      <div ref={mountRef} className="w-full flex-1 min-h-[440px] relative cursor-grab active:cursor-grabbing">
+      <div className="w-full flex-1 min-h-[440px] relative cursor-grab active:cursor-grabbing overflow-hidden">
+        <div ref={mountRef} className="absolute inset-0 w-full h-full" />
+
         {loadingTerrain && (
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center space-x-2 text-cyan-400 text-xs font-mono z-10">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center space-x-2 text-cyan-400 text-xs font-mono z-10 pointer-events-none">
             <span className="w-4 h-4 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
             <span>Generating 3D Martian terrain mesh...</span>
           </div>
         )}
 
         {!heightmapUrl && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-500 font-mono text-xs space-y-2">
+          <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-500 font-mono text-xs space-y-2 pointer-events-none">
             <AlertCircle className="w-8 h-8 text-slate-600" />
             <span>DEM elevation heightmap required for 3D visualization</span>
           </div>

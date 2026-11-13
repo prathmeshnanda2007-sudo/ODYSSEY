@@ -1,19 +1,14 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-env/
-venv/
-.venv/
+﻿__pycache__/
+*.pyc
 .pytest_cache/
-
-# Node
-frontend/node_modules/
-frontend/dist/
-frontend/.vite/
-
-# Temporary OS files
-.DS_Store
-Thumbs.db
+.venv/
+venv/
+.env
+node_modules/
+datasets/raw/
+*.tif
+*.tiff
+*.img
+*.pt
+*.pth
+*.onnx

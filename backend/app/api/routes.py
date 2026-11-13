@@ -8,7 +8,11 @@ import os
 import shutil
 import uuid
 from typing import Optional, Dict, Any, List
+from dataclasses import asdict
+import numpy as np
 import rasterio
+import cv2
+from PIL import Image
 
 from backend.app.ingestion.metadata import extract_raster_metadata, RasterMetadata
 from backend.app.ingestion.spatial_validator import validate_spatial_compatibility, SpatialCompatibilityReport
@@ -20,6 +24,7 @@ from backend.app.planning.base import AStarPlanner
 from backend.app.uncertainty.base import GeospatialUncertaintyEstimator
 from backend.app.science.base import GeologicalTargetEvaluator
 from backend.app.ingestion.sample_generator import generate_sample_mars_datasets
+from backend.app.perception.segmentation_engine import TerrainSegmentationEngine
 
 router = APIRouter()
 
@@ -27,6 +32,7 @@ router = APIRouter()
 DATASET_REGISTRY: Dict[str, Dict[str, Any]] = {}
 STATIC_OUTPUT_DIR = os.path.abspath("outputs")
 os.makedirs(STATIC_OUTPUT_DIR, exist_ok=True)
+SEGMENTATION_ENGINE = TerrainSegmentationEngine()
 
 
 def register_raster_file(filepath: str, file_type: str, custom_id: Optional[str] = None) -> Dict[str, Any]:
@@ -187,8 +193,6 @@ def analyze_terrain_endpoint(dem_id: str = Form(...)) -> Dict[str, Any]:
     # Generate slope preview image for UI layer toggle
     slope = res["slope"]
     norm_slope = np.clip(slope / 45.0 * 255.0, 0, 255).astype(np.uint8)
-    import cv2
-    from PIL import Image
     slope_color = cv2.applyColorMap(norm_slope, cv2.COLORMAP_MAGMA)
     slope_rgb = cv2.cvtColor(slope_color, cv2.COLOR_BGR2RGB)
     
@@ -254,3 +258,92 @@ def plan_path_endpoint(
         "start": [start_r, start_c],
         "goal": [goal_r, goal_c],
     }
+
+
+@router.post("/segment")
+def run_segmentation_endpoint(
+    imagery_id: str = Form(...),
+    dem_id: str = Form(...),
+    mc_samples: int = Form(5)
+) -> Dict[str, Any]:
+    """Execute U-Net terrain segmentation with Monte Carlo Dropout uncertainty."""
+    if imagery_id not in DATASET_REGISTRY:
+        raise HTTPException(status_code=404, detail=f"Imagery dataset '{imagery_id}' not found.")
+    if dem_id not in DATASET_REGISTRY:
+        raise HTTPException(status_code=404, detail=f"DEM dataset '{dem_id}' not found.")
+
+    img_record = DATASET_REGISTRY[imagery_id]
+    dem_record = DATASET_REGISTRY[dem_id]
+
+    # Read imagery
+    with rasterio.open(img_record["filepath"]) as src_img:
+        count = min(3, src_img.count)
+        imagery_data = src_img.read(list(range(1, count + 1)))
+
+    # Read DEM
+    with rasterio.open(dem_record["filepath"]) as src_dem:
+        dem_data = src_dem.read(1)
+        res_x, res_y = src_dem.res
+        nodata = src_dem.nodata
+
+    # Compute elevation morphometry
+    from backend.app.preprocessing.normalizer import normalize_dem_for_mesh
+    norm_dem, _ = normalize_dem_for_mesh(dem_data, nodata)
+
+    analyzer = TerrainAnalyzer()
+    slope = analyzer.compute_slope(dem_data, res_x, res_y)
+    ruggedness = analyzer.compute_ruggedness(dem_data)
+
+    # Run inference engine with Monte Carlo Dropout
+    seg_result = SEGMENTATION_ENGINE.segment_with_uncertainty(
+        imagery_rgb=imagery_data,
+        dem_norm=norm_dem,
+        slope_deg=slope,
+        ruggedness_tri=ruggedness,
+        num_mc_samples=max(1, min(20, mc_samples)),
+    )
+
+    prefix = f"{imagery_id}_{dem_id}"
+    seg_file, unc_file = SEGMENTATION_ENGINE.export_segmentation_visuals(
+        class_mask=seg_result["class_mask"],
+        uncertainty_map=seg_result["uncertainty_map"],
+        output_dir=STATIC_OUTPUT_DIR,
+        prefix=prefix,
+    )
+
+    return {
+        "success": True,
+        "segmentation_url": f"/outputs/{seg_file}",
+        "uncertainty_url": f"/outputs/{unc_file}",
+        "class_distributions": seg_result["class_distributions"],
+        "inference_latency_ms": seg_result["inference_latency_ms"],
+        "mc_samples": seg_result["mc_samples"],
+        "parameter_count": seg_result["parameter_count"],
+    }
+
+
+@router.get("/model-info")
+def get_model_info() -> Dict[str, Any]:
+    """Retrieve deep learning perception model specifications."""
+    return {
+        "model_architecture": "Multi-Modal Mars U-Net with Spatial & Feature Skip Connections",
+        "input_channels": 6,
+        "input_modalities": [
+            "Band 1: Red Optical Reflectance",
+            "Band 2: Green Optical Reflectance",
+            "Band 3: Blue Optical Reflectance",
+            "Band 4: Normalized DEM Elevation",
+            "Band 5: Surface Slope Gradient",
+            "Band 6: Terrain Ruggedness Index (TRI)",
+        ],
+        "classes": [
+            {"id": 0, "name": "Safe Bedrock", "hazard_level": "Minimal", "color": "#10b981"},
+            {"id": 1, "name": "Loose Sand / Dune", "hazard_level": "Moderate (Wheel Sinkage)", "color": "#f59e0b"},
+            {"id": 2, "name": "Rocky Field / Boulders", "hazard_level": "Elevated (Trip Hazard)", "color": "#8b5cf6"},
+            {"id": 3, "name": "Steep Hazard / Cliff", "hazard_level": "Lethal (Tipping Risk)", "color": "#ef4444"},
+            {"id": 4, "name": "Shadow / Optical Dropout", "hazard_level": "Unknown / High Risk", "color": "#4b5563"},
+        ],
+        "uncertainty_method": "Monte Carlo Dropout (Stochastic Variational Approximation)",
+        "parameter_count": sum(p.numel() for p in SEGMENTATION_ENGINE.model.parameters()),
+    }
+
