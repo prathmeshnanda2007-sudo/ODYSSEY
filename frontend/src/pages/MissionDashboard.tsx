@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Header } from '../components/Header';
 import { DataIngestionPanel } from '../components/DataIngestionPanel';
 import { CompatibilityInspector } from '../components/CompatibilityInspector';
-import { GeospatialMap2D } from '../maps/GeospatialMap2D';
+import { SegmentationPanel } from '../components/SegmentationPanel';
+import { ViewportHub } from '../maps/ViewportHub';
 import { PlanetaryMeshViewer3D } from '../maps/PlanetaryMeshViewer3D';
 import { TelemetryOverview } from '../dashboard/TelemetryOverview';
 import {
@@ -16,7 +17,7 @@ import {
   TerrainAnalysisResponse,
   PathPlanResponse,
 } from '../services/api';
-import { Map, Box, Columns, Layers } from 'lucide-react';
+import { runSegmentation, SegmentationResult } from '../services/perception';
 
 export const MissionDashboard: React.FC = () => {
   const [systemStatus, setSystemStatus] = useState<string>('CONNECTING');
@@ -40,8 +41,12 @@ export const MissionDashboard: React.FC = () => {
   const [pathPlan, setPathPlan] = useState<PathPlanResponse | null>(null);
   const [isPlanning, setIsPlanning] = useState<boolean>(false);
 
-  // Viewport mode
-  const [viewportMode, setViewportMode] = useState<'split' | '2d' | '3d'>('split');
+  // Phase 2: AI Segmentation state
+  const [segmentationResult, setSegmentationResult] = useState<SegmentationResult | null>(null);
+  const [isSegmenting, setIsSegmenting] = useState<boolean>(false);
+  const [segmentationError, setSegmentationError] = useState<string | null>(null);
+  const [mcSamples, setMcSamples] = useState<number>(5);
+
   const [isLoadingSamples, setIsLoadingSamples] = useState<boolean>(false);
 
   // Initial load
@@ -100,6 +105,7 @@ export const MissionDashboard: React.FC = () => {
 
   const handleSelectImagery = (rec: DatasetRecord) => {
     setImageryRecord(rec);
+    setSegmentationResult(null);
     if (demRecord) {
       runValidation(rec.id, demRecord.id);
     }
@@ -107,6 +113,7 @@ export const MissionDashboard: React.FC = () => {
 
   const handleSelectDem = (rec: DatasetRecord) => {
     setDemRecord(rec);
+    setSegmentationResult(null);
     if (imageryRecord) {
       runValidation(imageryRecord.id, rec.id);
     }
@@ -134,6 +141,39 @@ export const MissionDashboard: React.FC = () => {
     }
   };
 
+  const handleRunSegmentation = async (samples: number) => {
+    if (!imageryRecord || !demRecord) return;
+    setIsSegmenting(true);
+    setSegmentationError(null);
+    try {
+      const result = await runSegmentation(imageryRecord.id, demRecord.id, samples);
+      setSegmentationResult(result);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setSegmentationError(msg);
+      console.error('Segmentation error:', err);
+    } finally {
+      setIsSegmenting(false);
+    }
+  };
+
+  // 3D viewer as render prop — avoids Three.js being re-imported inside ViewportHub
+  const threeDViewer = (
+    <PlanetaryMeshViewer3D
+      heightmapUrl={demRecord?.heightmap_url}
+      textureUrl={imageryRecord?.preview_url || demRecord?.preview_url}
+      pathCoords={pathPlan?.plan.path_coords || []}
+      elevationRange={
+        demRecord?.preview?.stats
+          ? {
+              min: demRecord.preview.stats.min_elevation_m,
+              max: demRecord.preview.stats.max_elevation_m,
+            }
+          : undefined
+      }
+    />
+  );
+
   return (
     <div className="flex flex-col min-h-screen bg-mars-900 text-slate-100">
       <Header
@@ -143,7 +183,7 @@ export const MissionDashboard: React.FC = () => {
       />
 
       <main className="flex-1 p-5 grid grid-cols-12 gap-5 max-w-[1920px] mx-auto w-full">
-        {/* Left Column: Data Ingestion & Compatibility (3 cols) */}
+        {/* Left Column: Data Ingestion, Compatibility & Segmentation (3 cols) */}
         <section className="col-span-12 lg:col-span-3 space-y-4">
           <DataIngestionPanel
             imageryRecord={imageryRecord}
@@ -159,92 +199,35 @@ export const MissionDashboard: React.FC = () => {
             report={compatibilityReport}
             isValidating={isValidating}
           />
+
+          {/* Phase 2: AI Terrain Segmentation Panel */}
+          <SegmentationPanel
+            segmentationResult={segmentationResult}
+            isSegmenting={isSegmenting}
+            error={segmentationError}
+            mcSamples={mcSamples}
+            onMcSamplesChange={setMcSamples}
+            onRunSegmentation={() => handleRunSegmentation(mcSamples)}
+            canRun={!!(imageryRecord && demRecord) && !isSegmenting}
+          />
         </section>
 
-        {/* Center Column: Geospatial 2D and Three.js 3D Viewports (6 cols) */}
-        <section className="col-span-12 lg:col-span-6 flex flex-col space-y-3">
-          {/* Viewport Layout Mode Switcher */}
-          <div className="flex items-center justify-between bg-mars-800/60 border border-mars-700/60 rounded-xl px-4 py-2">
-            <div className="flex items-center space-x-2 text-xs font-mono text-slate-300">
-              <Layers className="w-4 h-4 text-mars-400" />
-              <span className="font-bold text-white">TERRAIN VISUALIZATION CONSOLE</span>
-            </div>
-
-            <div className="flex items-center space-x-1 bg-mars-950/80 rounded-lg p-0.5 border border-mars-700/50 text-xs font-mono">
-              <button
-                onClick={() => setViewportMode('split')}
-                className={`px-3 py-1 rounded flex items-center space-x-1.5 transition ${
-                  viewportMode === 'split'
-                    ? 'bg-mars-700 text-white font-bold'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                <Columns className="w-3.5 h-3.5" />
-                <span>Split 2D / 3D</span>
-              </button>
-              <button
-                onClick={() => setViewportMode('2d')}
-                className={`px-3 py-1 rounded flex items-center space-x-1.5 transition ${
-                  viewportMode === '2d'
-                    ? 'bg-mars-700 text-cyan-300 font-bold'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                <Map className="w-3.5 h-3.5" />
-                <span>2D Map</span>
-              </button>
-              <button
-                onClick={() => setViewportMode('3d')}
-                className={`px-3 py-1 rounded flex items-center space-x-1.5 transition ${
-                  viewportMode === '3d'
-                    ? 'bg-mars-700 text-amber-300 font-bold'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                <Box className="w-3.5 h-3.5" />
-                <span>3D Mesh</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Viewport Display Area */}
-          <div className={`grid gap-4 flex-1 ${
-            viewportMode === 'split' ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'
-          }`}>
-            {(viewportMode === 'split' || viewportMode === '2d') && (
-              <div className="h-[520px]">
-                <GeospatialMap2D
-                  imageryUrl={imageryRecord?.preview_url}
-                  demColormapUrl={demRecord?.preview_url}
-                  slopeUrl={terrainAnalysis?.slope_preview_url}
-                  pathCoords={pathPlan?.plan.path_coords || []}
-                  scienceTargets={terrainAnalysis?.science_targets || []}
-                  startCoords={startCoords}
-                  goalCoords={goalCoords}
-                  onSetStart={setStartCoords}
-                  onSetGoal={setGoalCoords}
-                />
-              </div>
-            )}
-
-            {(viewportMode === 'split' || viewportMode === '3d') && (
-              <div className="h-[520px]">
-                <PlanetaryMeshViewer3D
-                  heightmapUrl={demRecord?.heightmap_url}
-                  textureUrl={imageryRecord?.preview_url || demRecord?.preview_url}
-                  pathCoords={pathPlan?.plan.path_coords || []}
-                  elevationRange={
-                    demRecord?.preview?.stats
-                      ? {
-                          min: demRecord.preview.stats.min_elevation_m,
-                          max: demRecord.preview.stats.max_elevation_m,
-                        }
-                      : undefined
-                  }
-                />
-              </div>
-            )}
-          </div>
+        {/* Center Column: Unified Viewport Hub (6 cols) */}
+        <section className="col-span-12 lg:col-span-6 flex flex-col">
+          <ViewportHub
+            imageryUrl={imageryRecord?.preview_url}
+            demColormapUrl={demRecord?.preview_url}
+            slopeUrl={terrainAnalysis?.slope_preview_url}
+            segmentationUrl={segmentationResult?.segmentation_url}
+            uncertaintyUrl={segmentationResult?.uncertainty_url}
+            pathCoords={pathPlan?.plan.path_coords || []}
+            scienceTargets={terrainAnalysis?.science_targets || []}
+            startCoords={startCoords}
+            goalCoords={goalCoords}
+            onSetStart={setStartCoords}
+            onSetGoal={setGoalCoords}
+            ThreeDViewer={threeDViewer}
+          />
         </section>
 
         {/* Right Column: Telemetry, Hazards, Science & A* Planner (3 cols) */}

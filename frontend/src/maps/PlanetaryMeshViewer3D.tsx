@@ -64,6 +64,10 @@ export const PlanetaryMeshViewer3D: React.FC<PlanetaryMeshViewer3DProps> = ({
   useEffect(() => {
     if (!mountRef.current) return;
     const container = mountRef.current;
+
+    // Guard: React StrictMode double-invokes effects; skip if renderer already attached
+    if (rendererRef.current) return;
+
     const width = container.clientWidth;
     const height = container.clientHeight || 450;
 
@@ -82,7 +86,10 @@ export const PlanetaryMeshViewer3D: React.FC<PlanetaryMeshViewer3DProps> = ({
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     rendererRef.current = renderer;
 
-    container.appendChild(renderer.domElement);
+    // Only append if not already a child (extra safety for edge cases)
+    if (!container.contains(renderer.domElement)) {
+      container.appendChild(renderer.domElement);
+    }
 
     // Lighting: Simulates Mars NW Sun angle
     const ambientLight = new THREE.AmbientLight(0xffeedd, 0.6);
@@ -126,8 +133,16 @@ export const PlanetaryMeshViewer3D: React.FC<PlanetaryMeshViewer3DProps> = ({
     return () => {
       cancelAnimationFrame(animationId);
       window.removeEventListener('resize', handleResize);
-      renderer.dispose();
-      renderer.domElement.remove();
+      if (rendererRef.current) {
+        rendererRef.current.dispose();
+        rendererRef.current.domElement.remove();
+        rendererRef.current = null;
+      }
+      sceneRef.current = null;
+      cameraRef.current = null;
+      meshRef.current = null;
+      pathLineRef.current = null;
+      originalElevationsRef.current = null;
     };
   }, []);
 
