@@ -82,8 +82,8 @@ class TerrainSegmentationEngine:
         dem_norm: np.ndarray,          # (H, W) in [0.0, 1.0]
         slope_deg: np.ndarray,         # (H, W) in [0, 90]
         ruggedness_tri: np.ndarray     # (H, W) in meters
-    ) -> torch.Tensor:
-        """Construct normalized 6-channel tensor (1, 6, H, W)."""
+    ) -> Tuple[torch.Tensor, np.ndarray, np.ndarray]:
+        """Construct normalized 6-channel tensor (1, 6, H, W), automatically harmonizing dimensions."""
         if imagery_rgb.ndim == 3 and imagery_rgb.shape[2] == 3:
             imagery_rgb = np.transpose(imagery_rgb, (2, 0, 1))
 
@@ -91,6 +91,16 @@ class TerrainSegmentationEngine:
         opt_norm = imagery_rgb.astype(np.float32) / 255.0
         if opt_norm.shape[0] == 1:
             opt_norm = np.repeat(opt_norm, 3, axis=0)
+
+        _, H, W = opt_norm.shape
+
+        # Harmonize DEM, slope, and ruggedness dimensions to match optical imagery shape
+        if dem_norm.shape != (H, W):
+            dem_norm = cv2.resize(dem_norm.astype(np.float32), (W, H), interpolation=cv2.INTER_LINEAR)
+        if slope_deg.shape != (H, W):
+            slope_deg = cv2.resize(slope_deg.astype(np.float32), (W, H), interpolation=cv2.INTER_LINEAR)
+        if ruggedness_tri.shape != (H, W):
+            ruggedness_tri = cv2.resize(ruggedness_tri.astype(np.float32), (W, H), interpolation=cv2.INTER_LINEAR)
 
         # 2. Normalize slope to [0.0, 1.0] clamped at 45 degrees
         slope_norm = np.clip(slope_deg / 45.0, 0.0, 1.0).astype(np.float32)[np.newaxis, ...]
@@ -105,7 +115,7 @@ class TerrainSegmentationEngine:
         # Stack into 6-channel array: [R, G, B, DEM, Slope, Ruggedness]
         stacked = np.concatenate([opt_norm, dem_channel, slope_norm, rug_norm], axis=0)
         tensor = torch.from_numpy(stacked).unsqueeze(0).to(self.device)  # (1, 6, H, W)
-        return tensor
+        return tensor, slope_deg, ruggedness_tri
 
     def segment_with_uncertainty(
         self,
@@ -117,7 +127,9 @@ class TerrainSegmentationEngine:
     ) -> Dict[str, Any]:
         """Run Monte Carlo Dropout inference over N stochastic forward passes."""
         start_time = time.time()
-        tensor = self.prepare_input_tensor(imagery_rgb, dem_norm, slope_deg, ruggedness_tri)
+        tensor, slope_deg_resampled, _ = self.prepare_input_tensor(
+            imagery_rgb, dem_norm, slope_deg, ruggedness_tri
+        )
         H, W = tensor.shape[2], tensor.shape[3]
 
         self.model.eval()
@@ -137,13 +149,15 @@ class TerrainSegmentationEngine:
         mean_probs = np.mean(mc_stack, axis=0)
 
         # Fusing direct physical constraints into posterior to avoid fake classifications:
-        # If slope >= 30 deg, physical steep hazard is guaranteed
-        steep_condition = slope_deg >= 28.0
+        # If slope >= 28 deg, physical steep hazard is guaranteed
+        steep_condition = slope_deg_resampled >= 28.0
         mean_probs[3, steep_condition] = np.maximum(mean_probs[3, steep_condition], 0.95)
 
-        # If optical reflectance is near pitch black (< 5), optical shadow is guaranteed
+        # If optical reflectance is near pitch black (< 6), optical shadow is guaranteed
         if imagery_rgb.shape[0] >= 3:
             gray = np.mean(imagery_rgb, axis=0)
+            if gray.shape != (H, W):
+                gray = cv2.resize(gray.astype(np.float32), (W, H), interpolation=cv2.INTER_LINEAR)
             shadow_condition = gray < 6.0
             mean_probs[4, shadow_condition] = np.maximum(mean_probs[4, shadow_condition], 0.90)
 

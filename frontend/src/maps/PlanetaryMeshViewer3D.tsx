@@ -453,22 +453,22 @@ export const PlanetaryMeshViewer3D: React.FC<PlanetaryMeshViewer3DProps> = ({
   return (
     <div className="flex flex-col h-full bg-mars-900 rounded-xl border border-mars-700/60 overflow-hidden relative">
       {/* 3D Header Toolbar */}
-      <div className="bg-mars-800/80 px-4 py-2 border-b border-mars-700/50 flex items-center justify-between text-xs font-mono">
+      <div className="bg-mars-800/80 px-3 py-2 border-b border-mars-700/50 flex flex-wrap items-center justify-between gap-2 text-xs font-mono">
         <div className="flex items-center space-x-2 text-slate-300 min-w-0">
           <Box className="w-4 h-4 text-cyan-400 flex-shrink-0" />
           <span className="font-semibold text-white truncate text-[11px]">3D SURFACE MODEL</span>
           {elevationRange && (
-            <span className="text-[10px] text-emerald-400 bg-emerald-950/70 px-1.5 py-0.5 rounded border border-emerald-800/60 whitespace-nowrap hidden sm:inline">
+            <span className="text-[10px] text-emerald-400 bg-emerald-950/70 px-1.5 py-0.5 rounded border border-emerald-800/60 whitespace-nowrap hidden lg:inline">
               {elevationRange.min}m → {elevationRange.max}m
             </span>
           )}
         </div>
 
         {/* Controls */}
-        <div className="flex items-center space-x-4">
-          <div className="flex items-center space-x-2">
-            <Sliders className="w-3.5 h-3.5 text-mars-400" />
-            <span className="text-slate-400 text-[11px]">Exagg:</span>
+        <div className="flex items-center space-x-2 sm:space-x-3 ml-auto">
+          <div className="flex items-center space-x-1.5">
+            <Sliders className="w-3 h-3 text-mars-400" />
+            <span className="text-slate-400 text-[10px]">Exag:</span>
             <input
               type="range"
               min="0.5"
@@ -476,14 +476,14 @@ export const PlanetaryMeshViewer3D: React.FC<PlanetaryMeshViewer3DProps> = ({
               step="0.1"
               value={exaggeration}
               onChange={(e) => setExaggeration(parseFloat(e.target.value))}
-              className="w-20 accent-mars-500 cursor-pointer h-1.5 bg-mars-700 rounded-lg"
+              className="w-16 sm:w-20 accent-mars-500 cursor-pointer h-1.5 bg-mars-700 rounded-lg"
             />
-            <span className="text-white w-7 text-[11px]">{exaggeration.toFixed(1)}x</span>
+            <span className="text-white w-6 text-[10px]">{exaggeration.toFixed(1)}x</span>
           </div>
 
           <button
             onClick={() => setWireframe(!wireframe)}
-            className={`px-2.5 py-1 rounded border text-[11px] transition ${
+            className={`px-2 py-0.5 rounded border text-[10px] transition ${
               wireframe
                 ? 'bg-mars-600 text-cyan-300 border-cyan-500'
                 : 'bg-mars-700/60 text-slate-300 border-mars-600 hover:bg-mars-600'
@@ -497,7 +497,7 @@ export const PlanetaryMeshViewer3D: React.FC<PlanetaryMeshViewer3DProps> = ({
             className="p-1 rounded bg-mars-700/60 text-slate-300 border border-mars-600 hover:bg-mars-600 transition"
             title="Reset 3D Camera"
           >
-            <RotateCcw className="w-3.5 h-3.5" />
+            <RotateCcw className="w-3 h-3" />
           </button>
         </div>
       </div>

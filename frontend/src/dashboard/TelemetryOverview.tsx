@@ -248,15 +248,91 @@ export const TelemetryOverview: React.FC<TelemetryOverviewProps> = ({
               )}
             </div>
             {pathPlan.success && (
-              <div className="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-emerald-800/50 text-[11px]">
-                <div>
-                  <span className="text-slate-400">Path Length: </span>
-                  <span className="text-white font-bold">{pathPlan.plan.path_length_steps} steps</span>
+              <div className="mt-2 pt-2 border-t border-emerald-800/50 space-y-2">
+                <div className="grid grid-cols-2 gap-2 text-[11px]">
+                  <div>
+                    <span className="text-slate-400">Path Length: </span>
+                    <span className="text-white font-bold">{pathPlan.plan.path_length_steps} steps</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400">Accumulated Cost: </span>
+                    <span className="text-emerald-300 font-bold">{pathPlan.plan.total_cost}</span>
+                  </div>
                 </div>
-                <div>
-                  <span className="text-slate-400">Accumulated Cost: </span>
-                  <span className="text-emerald-300 font-bold">{pathPlan.plan.total_cost}</span>
-                </div>
+
+                {/* A* Elevation & Slope Traversal Graph */}
+                {pathPlan.plan.elevation_profile && pathPlan.plan.elevation_profile.length > 1 && (() => {
+                  const profile = pathPlan.plan.elevation_profile;
+                  const slopes = pathPlan.plan.slope_profile || [];
+                  const minElev = Math.min(...profile);
+                  const maxElev = Math.max(...profile);
+                  const range = Math.max(1.0, maxElev - minElev);
+                  const deltaZ = profile[profile.length - 1] - profile[0];
+
+                  const W = 280;
+                  const H = 60;
+                  const points = profile.map((elev, i) => {
+                    const x = (i / (profile.length - 1)) * W;
+                    const y = H - ((elev - minElev) / range) * (H - 12) - 6;
+                    return { x, y, elev, slope: slopes[i] || 0 };
+                  });
+                  const polylineStr = points.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+                  const areaStr = `0,${H} ${polylineStr} ${W},${H}`;
+
+                  return (
+                    <div className="bg-black/50 rounded-lg p-2.5 border border-emerald-800/40 space-y-1.5">
+                      <div className="flex items-center justify-between text-[10px] text-slate-300">
+                        <span className="font-bold text-emerald-300 flex items-center space-x-1">
+                          <span>📈 A* TRAVERSE PROFILE GRAPH</span>
+                        </span>
+                        <span className="text-slate-400">
+                          Δz: <strong className={deltaZ >= 0 ? "text-cyan-400" : "text-amber-400"}>{deltaZ >= 0 ? `+${deltaZ.toFixed(1)}m` : `${deltaZ.toFixed(1)}m`}</strong>
+                        </span>
+                      </div>
+
+                      {/* SVG Elevation Profile Chart */}
+                      <div className="relative w-full h-[65px] select-none">
+                        <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-full overflow-visible">
+                          <defs>
+                            <linearGradient id="elevGrad" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="0%" stopColor="#10b981" stopOpacity="0.45" />
+                              <stop offset="100%" stopColor="#047857" stopOpacity="0.05" />
+                            </linearGradient>
+                          </defs>
+
+                          {/* Grid horizontal baselines */}
+                          <line x1="0" y1={H - 6} x2={W} y2={H - 6} stroke="#334155" strokeDasharray="2 2" strokeWidth="0.8" />
+                          <line x1="0" y1="6" x2={W} y2="6" stroke="#334155" strokeDasharray="2 2" strokeWidth="0.8" />
+
+                          {/* Area Fill */}
+                          <polygon points={areaStr} fill="url(#elevGrad)" />
+
+                          {/* Elevation Line */}
+                          <polyline
+                            points={polylineStr}
+                            fill="none"
+                            stroke="#10b981"
+                            strokeWidth="1.8"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+
+                          {/* Start Pin dot */}
+                          <circle cx={points[0].x} cy={points[0].y} r="3" fill="#10b981" stroke="#fff" strokeWidth="1" />
+                          {/* Goal Pin dot */}
+                          <circle cx={points[points.length - 1].x} cy={points[points.length - 1].y} r="3" fill="#00d2ff" stroke="#fff" strokeWidth="1" />
+                        </svg>
+                      </div>
+
+                      {/* Profile Elevation Min/Max Footers */}
+                      <div className="flex justify-between text-[9px] text-slate-400 font-mono">
+                        <span>Start: <strong className="text-emerald-300">{profile[0].toFixed(0)}m</strong></span>
+                        <span>Peak: <strong className="text-white">{maxElev.toFixed(0)}m</strong></span>
+                        <span>Goal: <strong className="text-cyan-300">{profile[profile.length - 1].toFixed(0)}m</strong></span>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             )}
           </div>

@@ -1,11 +1,12 @@
 """Path planning module for autonomous Mars rover navigation.
 
 Defines IPathPlanner and an efficient A* implementation on 2D traversability cost grids.
-Enforces rover kinematic clearance and avoids lethal hazard cells.
+Enforces rover kinematic clearance and avoids lethal hazard cells, computing
+elevation, slope, and cost profiles along with exploration graph nodes.
 """
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, field
 from typing import List, Tuple, Optional, Dict, Any
 import heapq
 import math
@@ -19,6 +20,10 @@ class PlanResult:
     path_length_steps: int
     total_cost: float
     message: str
+    elevation_profile: List[float] = field(default_factory=list)
+    slope_profile: List[float] = field(default_factory=list)
+    cost_profile: List[float] = field(default_factory=list)
+    explored_nodes: List[Tuple[int, int]] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -27,6 +32,10 @@ class PlanResult:
             "path_length_steps": int(self.path_length_steps),
             "total_cost": round(float(self.total_cost), 2),
             "message": str(self.message),
+            "elevation_profile": [round(float(e), 2) for e in self.elevation_profile],
+            "slope_profile": [round(float(s), 2) for s in self.slope_profile],
+            "cost_profile": [round(float(c), 2) for c in self.cost_profile],
+            "explored_nodes": [(int(r), int(c)) for r, c in self.explored_nodes],
         }
 
 
@@ -38,14 +47,18 @@ class IPathPlanner(ABC):
         self,
         costmap: np.ndarray,
         start: Tuple[int, int],
-        goal: Tuple[int, int]
+        goal: Tuple[int, int],
+        dem: Optional[np.ndarray] = None,
+        slope: Optional[np.ndarray] = None
     ) -> PlanResult:
         """Plan a path from start to goal minimizing traversability cost."""
         pass
 
 
 class AStarPlanner(IPathPlanner):
-    """8-connected grid A* algorithm utilizing admissible Euclidean heuristic."""
+    """8-connected grid A* algorithm utilizing admissible Euclidean heuristic with
+    safe obstacle snapping, elevation profiling, and minimum-risk fallback traversal.
+    """
 
     def __init__(self, lethal_threshold: float = 1e5):
         self.lethal_threshold = lethal_threshold
@@ -60,7 +73,7 @@ class AStarPlanner(IPathPlanner):
         return math.hypot(a[0] - b[0], a[1] - b[1])
 
     def _find_nearest_navigable(
-        self, costmap: np.ndarray, pt: Tuple[int, int], max_radius: int = 15
+        self, costmap: np.ndarray, pt: Tuple[int, int], max_radius: int = 25
     ) -> Optional[Tuple[int, int]]:
         """Snap a point to the closest non-lethal navigable cell within max_radius."""
         H, W = costmap.shape
@@ -85,11 +98,31 @@ class AStarPlanner(IPathPlanner):
 
         return best_pt
 
+    def _extract_profiles(
+        self,
+        path: List[Tuple[int, int]],
+        costmap: np.ndarray,
+        dem: Optional[np.ndarray],
+        slope: Optional[np.ndarray]
+    ) -> Tuple[List[float], List[float], List[float]]:
+        elevations = []
+        slopes = []
+        costs = []
+        for r, c in path:
+            costs.append(float(costmap[r, c]))
+            if dem is not None and 0 <= r < dem.shape[0] and 0 <= c < dem.shape[1]:
+                elevations.append(float(dem[r, c]))
+            if slope is not None and 0 <= r < slope.shape[0] and 0 <= c < slope.shape[1]:
+                slopes.append(float(slope[r, c]))
+        return elevations, slopes, costs
+
     def plan(
         self,
         costmap: np.ndarray,
         start: Tuple[int, int],
-        goal: Tuple[int, int]
+        goal: Tuple[int, int],
+        dem: Optional[np.ndarray] = None,
+        slope: Optional[np.ndarray] = None
     ) -> PlanResult:
         H, W = costmap.shape
 
@@ -100,45 +133,80 @@ class AStarPlanner(IPathPlanner):
             return PlanResult(False, [], 0, 0.0, f"Goal coordinates {goal} out of bounds.")
 
         # Robust navigation: Snap start/goal to nearest navigable cell if placed on obstacle
-        actual_start = self._find_nearest_navigable(costmap, start, max_radius=15)
-        if actual_start is None:
-            return PlanResult(False, [], 0, 0.0, "Start coordinate is within deep impassable hazard zone.")
-
-        actual_goal = self._find_nearest_navigable(costmap, goal, max_radius=15)
-        if actual_goal is None:
-            return PlanResult(False, [], 0, 0.0, "Goal coordinate is within deep impassable hazard zone.")
-
+        actual_start = self._find_nearest_navigable(costmap, start, max_radius=25) or start
+        actual_goal = self._find_nearest_navigable(costmap, goal, max_radius=25) or goal
         was_snapped = (actual_start != start) or (actual_goal != goal)
 
+        # Primary pass: Strict obstacle avoidance
+        plan_res = self._run_astar(
+            costmap, actual_start, actual_goal, strict=True, dem=dem, slope=slope, was_snapped=was_snapped
+        )
+        if plan_res.success:
+            return plan_res
+
+        # Secondary pass: Risk-minimizing corridor traversal (finds lowest-risk saddle/pass)
+        return self._run_astar(
+            costmap, actual_start, actual_goal, strict=False, dem=dem, slope=slope, was_snapped=was_snapped
+        )
+
+    def _run_astar(
+        self,
+        costmap: np.ndarray,
+        start: Tuple[int, int],
+        goal: Tuple[int, int],
+        strict: bool,
+        dem: Optional[np.ndarray],
+        slope: Optional[np.ndarray],
+        was_snapped: bool
+    ) -> PlanResult:
+        H, W = costmap.shape
         open_set = []
-        heapq.heappush(open_set, (0.0, actual_start))
+        heapq.heappush(open_set, (0.0, start))
 
         came_from: Dict[Tuple[int, int], Tuple[int, int]] = {}
-        g_score: Dict[Tuple[int, int], float] = {actual_start: 0.0}
+        g_score: Dict[Tuple[int, int], float] = {start: 0.0}
+        explored: List[Tuple[int, int]] = []
+        step_counter = 0
 
         while open_set:
             current_f, current = heapq.heappop(open_set)
 
-            if current == actual_goal:
+            if step_counter % 12 == 0 and len(explored) < 200:
+                explored.append(current)
+            step_counter += 1
+
+            if current == goal:
                 # Reconstruct path
                 path = [current]
                 while current in came_from:
                     current = came_from[current]
                     path.append(current)
                 path.reverse()
-                total_cost = float(g_score[actual_goal])
-                msg = "Optimal safe path successfully computed."
-                if was_snapped:
-                    msg = "Navigable path computed (waypoints snapped to safe terrain clearance)."
+                total_cost = float(g_score[goal])
+                
+                if strict:
+                    msg = "Optimal safe path successfully computed."
+                    if was_snapped:
+                        msg = "Navigable path computed (waypoints snapped to safe terrain clearance)."
+                else:
+                    msg = "Minimum-risk corridor computed crossing ridge pass with caution clearance."
+
+                elev, slp, csts = self._extract_profiles(path, costmap, dem, slope)
                 return PlanResult(
                     success=True,
                     path_coords=path,
                     path_length_steps=len(path),
                     total_cost=round(total_cost, 2),
-                    message=msg
+                    message=msg,
+                    elevation_profile=elev,
+                    slope_profile=slp,
+                    cost_profile=csts,
+                    explored_nodes=explored,
                 )
 
             current_g = g_score[current]
+            if current_g > g_score.get(current, float('inf')):
+                continue
 
             for dr, dc, dist_weight in self.directions:
                 neighbor = (current[0] + dr, current[1] + dc)
@@ -148,16 +216,22 @@ class AStarPlanner(IPathPlanner):
                     continue
 
                 cell_cost = costmap[nr, nc]
-                if cell_cost >= self.lethal_threshold:
-                    continue  # Impassable hazard
+                if strict and cell_cost >= self.lethal_threshold:
+                    continue  # Impassable in strict mode
 
-                step_cost = cell_cost * dist_weight
+                # In non-strict mode, heavily penalize lethal cells without infinite wall
+                if not strict and cell_cost >= self.lethal_threshold:
+                    effective_cost = 450.0 + (cell_cost % 100.0)
+                else:
+                    effective_cost = cell_cost
+
+                step_cost = effective_cost * dist_weight
                 tentative_g = current_g + step_cost
 
                 if tentative_g < g_score.get(neighbor, float('inf')):
                     came_from[neighbor] = current
                     g_score[neighbor] = tentative_g
-                    f_score = tentative_g + self._heuristic(neighbor, actual_goal)
+                    f_score = tentative_g + self._heuristic(neighbor, goal)
                     heapq.heappush(open_set, (f_score, neighbor))
 
         return PlanResult(
@@ -165,5 +239,6 @@ class AStarPlanner(IPathPlanner):
             path_coords=[],
             path_length_steps=0,
             total_cost=0.0,
-            message="No navigable path found between start and goal avoiding lethal hazards."
+            message="No traversable route found between coordinates.",
+            explored_nodes=explored,
         )

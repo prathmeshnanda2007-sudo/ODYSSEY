@@ -113,6 +113,16 @@ export interface TerrainAnalysisResponse {
   science_targets: ScienceTarget[];
 }
 
+export interface TerrainPreset {
+  id: string;
+  name: string;
+  mission: string;
+  region: string;
+  elevation_range: string;
+  morphology: string;
+  description: string;
+}
+
 export interface PathPlanResponse {
   success: boolean;
   plan: {
@@ -121,6 +131,10 @@ export interface PathPlanResponse {
     path_length_steps: number;
     total_cost: number;
     message: string;
+    elevation_profile?: number[];
+    slope_profile?: number[];
+    cost_profile?: number[];
+    explored_nodes?: [number, number][];
   };
   start: [number, number];
   goal: [number, number];
@@ -131,6 +145,24 @@ const API_BASE = '/api';
 export async function getSystemStatus(): Promise<any> {
   const res = await fetch(`${API_BASE}/status`);
   if (!res.ok) throw new Error('Failed to fetch system status');
+  return res.json();
+}
+
+export async function fetchTerrainCatalog(): Promise<{ count: number; terrains: TerrainPreset[] }> {
+  const res = await fetch(`${API_BASE}/terrains`);
+  if (!res.ok) throw new Error('Failed to fetch terrain catalog');
+  return res.json();
+}
+
+export async function loadTerrainPreset(terrainId: string): Promise<{
+  success: boolean;
+  terrain_id: string;
+  preset: TerrainPreset;
+  imagery: DatasetRecord;
+  dem: DatasetRecord;
+}> {
+  const res = await fetch(`${API_BASE}/terrains/${terrainId}`, { method: 'POST' });
+  if (!res.ok) throw new Error(`Failed to load terrain preset: ${terrainId}`);
   return res.json();
 }
 

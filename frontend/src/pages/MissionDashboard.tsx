@@ -12,6 +12,7 @@ import {
   validateCompatibility,
   analyzeTerrain,
   planPath,
+  loadTerrainPreset,
   DatasetRecord,
   SpatialCompatibilityReport,
   TerrainAnalysisResponse,
@@ -35,6 +36,9 @@ export const MissionDashboard: React.FC = () => {
   const [isValidating, setIsValidating] = useState<boolean>(false);
   const [terrainAnalysis, setTerrainAnalysis] = useState<TerrainAnalysisResponse | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
+
+  // Terrain Morphology Presets
+  const [activeTerrainId, setActiveTerrainId] = useState<string>('jezero');
 
   // Navigation & Path Planning
   const [startCoords, setStartCoords] = useState<[number, number]>([90, 90]);
@@ -74,9 +78,41 @@ export const MissionDashboard: React.FC = () => {
       await runValidation(samples.imagery.id, samples.dem.id);
       // Run terrain analysis
       await runTerrainAnalysis(samples.dem.id);
+      // Automatically compute initial path so user immediately sees A* graph and route
+      try {
+        const initPlan = await planPath(samples.dem.id, startCoords[0], startCoords[1], goalCoords[0], goalCoords[1]);
+        setPathPlan(initPlan);
+      } catch (planErr) {
+        console.warn('Initial path plan skipped:', planErr);
+      }
     } catch (err) {
       console.error('Initialization error:', err);
       setSystemStatus('OFFLINE');
+    } finally {
+      setIsLoadingSamples(false);
+    }
+  };
+
+  const handleSelectTerrainPreset = async (terrainId: string) => {
+    setActiveTerrainId(terrainId);
+    setIsLoadingSamples(true);
+    setSegmentationResult(null);
+    try {
+      const res = await loadTerrainPreset(terrainId);
+      setImageryRecord(res.imagery);
+      setDemRecord(res.dem);
+      setDemPrimaryRecord(res.dem);
+      await runValidation(res.imagery.id, res.dem.id);
+      await runTerrainAnalysis(res.dem.id);
+      // Immediately calculate safe A* trajectory across the new morphology
+      try {
+        const plan = await planPath(res.dem.id, startCoords[0], startCoords[1], goalCoords[0], goalCoords[1]);
+        setPathPlan(plan);
+      } catch (e) {
+        console.warn('Terrain plan calculation note:', e);
+      }
+    } catch (err) {
+      console.error('Failed to load terrain preset:', err);
     } finally {
       setIsLoadingSamples(false);
     }
@@ -243,6 +279,8 @@ export const MissionDashboard: React.FC = () => {
             onSelectDem={handleSelectDem}
             onLoadSamples={loadInitialData}
             isLoading={isLoadingSamples}
+            activeTerrainId={activeTerrainId}
+            onSelectTerrain={handleSelectTerrainPreset}
           />
 
           <CompatibilityInspector
@@ -276,6 +314,7 @@ export const MissionDashboard: React.FC = () => {
             activeLayer={activeLayer}
             onSelectLayer={setActiveLayer}
             pathCoords={pathPlan?.plan.path_coords || []}
+            exploredNodes={pathPlan?.plan.explored_nodes || []}
             scienceTargets={terrainAnalysis?.science_targets || []}
             startCoords={startCoords}
             goalCoords={goalCoords}

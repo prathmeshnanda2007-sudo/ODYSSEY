@@ -1,4 +1,4 @@
-﻿__pycache__/
+__pycache__/
 *.pyc
 .pytest_cache/
 .venv/
@@ -12,3 +12,5 @@ datasets/raw/
 *.pt
 *.pth
 *.onnx
+outputs/
+

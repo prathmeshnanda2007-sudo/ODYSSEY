@@ -31,6 +31,7 @@ interface ViewportHubProps {
   onSelectLayer?: (layer: LayerKey) => void;
   // Path and targets
   pathCoords: [number, number][];
+  exploredNodes?: [number, number][];
   scienceTargets: ScienceTarget[];
   startCoords: [number, number];
   goalCoords: [number, number];
@@ -50,6 +51,7 @@ export const ViewportHub: React.FC<ViewportHubProps> = ({
   activeLayer: externalActiveLayer,
   onSelectLayer: externalOnSelectLayer,
   pathCoords,
+  exploredNodes,
   scienceTargets,
   startCoords,
   goalCoords,
@@ -64,6 +66,7 @@ export const ViewportHub: React.FC<ViewportHubProps> = ({
   const [viewMode, setViewMode] = useState<'split' | '2d' | '3d'>('split');
   const [pointerMode, setPointerMode] = useState<'start' | 'goal'>('goal');
   const [hoverCoords, setHoverCoords] = useState<{ x: number; y: number } | null>(null);
+  const [imageLoadError, setImageLoadError] = useState(false);
   const imageContainerRef = useRef<HTMLDivElement>(null);
 
   const layers: { key: LayerKey; label: string; url?: string; color: string }[] = [
@@ -210,7 +213,16 @@ export const ViewportHub: React.FC<ViewportHubProps> = ({
                     alt="Martian terrain layer"
                     className="w-full h-full object-contain pointer-events-none select-none"
                     key={currentUrl}
+                    onLoad={() => setImageLoadError(false)}
+                    onError={() => setImageLoadError(true)}
                   />
+
+                  {imageLoadError && (
+                    <div className="absolute inset-0 bg-mars-950/80 flex flex-col items-center justify-center p-4 text-center space-y-1.5 text-xs font-mono text-amber-300">
+                      <span>⚠️ Rendering layer preview...</span>
+                      <span className="text-[10px] text-slate-400">Communicating with backend raster server</span>
+                    </div>
+                  )}
 
                   {/* SVG Path & Waypoint Overlay */}
                   <svg
@@ -218,16 +230,31 @@ export const ViewportHub: React.FC<ViewportHubProps> = ({
                     viewBox="0 0 100 100"
                     preserveAspectRatio="none"
                   >
+                    {/* A* Exploration Search Graph Nodes */}
+                    {exploredNodes && exploredNodes.map((pt, idx) => {
+                      const p = toPct(pt);
+                      return (
+                        <circle
+                          key={idx}
+                          cx={p.x}
+                          cy={p.y}
+                          r="0.5"
+                          fill="#34d399"
+                          opacity="0.25"
+                        />
+                      );
+                    })}
+
                     {/* A* Path */}
                     {pathCoords.length > 1 && (
                       <polyline
                         points={pathCoords.map(pt => `${toPct(pt).x},${toPct(pt).y}`).join(' ')}
                         fill="none"
                         stroke="#10b981"
-                        strokeWidth="1.0"
+                        strokeWidth="1.2"
                         strokeLinecap="round"
                         strokeLinejoin="round"
-                        className="filter drop-shadow-[0_0_3px_#10b981]"
+                        className="filter drop-shadow-[0_0_4px_#10b981]"
                       />
                     )}
 

@@ -11,6 +11,8 @@ interface DataIngestionPanelProps {
   onSelectDem: (rec: DatasetRecord) => void;
   onLoadSamples: () => void;
   isLoading: boolean;
+  activeTerrainId?: string;
+  onSelectTerrain?: (terrainId: string) => void;
 }
 
 export const DataIngestionPanel: React.FC<DataIngestionPanelProps> = ({
@@ -22,9 +24,19 @@ export const DataIngestionPanel: React.FC<DataIngestionPanelProps> = ({
   onSelectDem,
   onLoadSamples,
   isLoading,
+  activeTerrainId = 'jezero',
+  onSelectTerrain,
 }) => {
   const [uploadingType, setUploadingType] = useState<'imagery' | 'dem' | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
+
+  const terrainPresets = [
+    { id: 'jezero', name: 'Jezero Crater', icon: '🔴', tag: 'Perseverance' },
+    { id: 'olympus', name: 'Olympus Mons', icon: '🌋', tag: 'Caldera' },
+    { id: 'valles', name: 'Valles Marineris', icon: '🏜️', tag: 'Rift Chasma' },
+    { id: 'gale', name: 'Gale / Mt Sharp', icon: '⛰️', tag: 'Curiosity' },
+    { id: 'dunes', name: 'Noctis Dunes', icon: '〰️', tag: 'Mesas' },
+  ];
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'imagery' | 'dem') => {
     const file = e.target.files?.[0];
@@ -61,9 +73,41 @@ export const DataIngestionPanel: React.FC<DataIngestionPanelProps> = ({
           className="flex items-center space-x-1.5 text-xs font-mono px-2.5 py-1 rounded bg-mars-700 hover:bg-mars-600 text-slate-200 border border-mars-600 transition"
         >
           <RefreshCw className={`w-3 h-3 ${isLoading ? 'animate-spin' : ''}`} />
-          <span>Reload Jezero Samples</span>
+          <span>Reset Samples</span>
         </button>
       </div>
+
+      {/* Planetary Morphology Presets */}
+      {onSelectTerrain && (
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between text-[10px] font-mono text-slate-400">
+            <span>MARTIAN TERRAIN PRESETS:</span>
+            <span className="text-cyan-400 font-semibold">{terrainPresets.find(t => t.id === activeTerrainId)?.name}</span>
+          </div>
+          <div className="grid grid-cols-5 gap-1 font-mono text-[10px]">
+            {terrainPresets.map((t) => {
+              const isActive = activeTerrainId === t.id;
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => onSelectTerrain(t.id)}
+                  disabled={isLoading}
+                  className={`flex flex-col items-center justify-center p-1.5 rounded-lg border transition text-center ${
+                    isActive
+                      ? 'bg-mars-600/90 text-white border-cyan-400 shadow-md shadow-cyan-950/40 ring-1 ring-cyan-400/40'
+                      : 'bg-mars-900/80 text-slate-400 border-mars-700/60 hover:bg-mars-800 hover:text-slate-200'
+                  }`}
+                  title={`${t.name} (${t.tag})`}
+                >
+                  <span className="text-sm leading-none mb-0.5">{t.icon}</span>
+                  <span className="truncate w-full font-bold text-[9px] leading-tight">{t.name.split(' ')[0]}</span>
+                  <span className="text-[8px] text-slate-500 leading-none">{t.tag}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {uploadError && (
         <div className="bg-red-950/60 border border-red-800/80 rounded-lg p-3 text-xs text-red-300 flex items-start space-x-2">
