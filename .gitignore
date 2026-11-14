@@ -13,4 +13,6 @@ datasets/raw/
 *.pth
 *.onnx
 outputs/
+*.log
+
 
