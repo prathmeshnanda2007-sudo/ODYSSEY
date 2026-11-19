@@ -31,11 +31,14 @@ export const DataIngestionPanel: React.FC<DataIngestionPanelProps> = ({
   const [uploadError, setUploadError] = useState<string | null>(null);
 
   const terrainPresets = [
-    { id: 'jezero', name: 'Jezero Crater', icon: '🔴', tag: 'Perseverance' },
+    { id: 'jezero', name: 'Jezero Crater', icon: '🔴', tag: 'Delta' },
     { id: 'olympus', name: 'Olympus Mons', icon: '🌋', tag: 'Caldera' },
-    { id: 'valles', name: 'Valles Marineris', icon: '🏜️', tag: 'Rift Chasma' },
-    { id: 'gale', name: 'Gale / Mt Sharp', icon: '⛰️', tag: 'Curiosity' },
+    { id: 'valles', name: 'Valles Marineris', icon: '🏜️', tag: 'Canyon' },
+    { id: 'gale', name: 'Gale / Mt Sharp', icon: '⛰️', tag: 'Strata' },
     { id: 'dunes', name: 'Noctis Dunes', icon: '〰️', tag: 'Mesas' },
+    { id: 'chaos', name: 'Hydaspis Chaos', icon: '🕸️', tag: 'Polygons' },
+    { id: 'korolev', name: 'Korolev Ice', icon: '🧊', tag: 'Ice Dome' },
+    { id: 'rille', name: 'Elysium Rille', icon: '🔥', tag: 'Lava Tube' },
   ];
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'imagery' | 'dem') => {
@@ -84,7 +87,7 @@ export const DataIngestionPanel: React.FC<DataIngestionPanelProps> = ({
             <span>MARTIAN TERRAIN PRESETS:</span>
             <span className="text-cyan-400 font-semibold">{terrainPresets.find(t => t.id === activeTerrainId)?.name}</span>
           </div>
-          <div className="grid grid-cols-5 gap-1 font-mono text-[10px]">
+          <div className="grid grid-cols-4 gap-1.5 font-mono text-[10px]">
             {terrainPresets.map((t) => {
               const isActive = activeTerrainId === t.id;
               return (

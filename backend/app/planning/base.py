@@ -165,11 +165,16 @@ class AStarPlanner(IPathPlanner):
 
         came_from: Dict[Tuple[int, int], Tuple[int, int]] = {}
         g_score: Dict[Tuple[int, int], float] = {start: 0.0}
+        closed_set: set[Tuple[int, int]] = set()
         explored: List[Tuple[int, int]] = []
         step_counter = 0
 
         while open_set:
             current_f, current = heapq.heappop(open_set)
+
+            if current in closed_set:
+                continue
+            closed_set.add(current)
 
             if step_counter % 12 == 0 and len(explored) < 200:
                 explored.append(current)
@@ -205,14 +210,15 @@ class AStarPlanner(IPathPlanner):
                 )
 
             current_g = g_score[current]
-            if current_g > g_score.get(current, float('inf')):
-                continue
 
             for dr, dc, dist_weight in self.directions:
                 neighbor = (current[0] + dr, current[1] + dc)
                 nr, nc = neighbor
 
                 if not (0 <= nr < H and 0 <= nc < W):
+                    continue
+
+                if neighbor in closed_set:
                     continue
 
                 cell_cost = costmap[nr, nc]

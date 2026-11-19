@@ -73,11 +73,24 @@ class TerrainAnalyzer(ITerrainAnalyzer):
         return aspect_deg
 
     def compute_ruggedness(self, dem: np.ndarray, window_size: int = 3) -> np.ndarray:
-        """Compute Terrain Ruggedness Index (TRI): mean elevation difference between a cell and its 8 neighbors."""
+        """Compute Terrain Ruggedness Index (TRI) via Riley et al. (1999):
+        Root-mean-squared elevation difference between a focal cell and its 8 neighbors:
+        TRI = sqrt( sum_{i,j} (z_{i,j} - z_c)^2 )
+        """
         dem_clean = np.nan_to_num(dem, nan=0.0).astype(np.float32)
-        kernel = np.ones((window_size, window_size), dtype=np.float32) / (window_size**2)
-        local_mean = cv2.filter2D(dem_clean, -1, kernel)
-        tri = np.abs(dem_clean - local_mean)
+        # 3x3 kernel excluding the center cell (weights: 1 for 8 neighbors, 0 at center)
+        kernel = np.ones((window_size, window_size), dtype=np.float32)
+        center = window_size // 2
+        kernel[center, center] = 0.0
+
+        # sum(z_k) and sum(z_k^2) over the 8 neighbors
+        sum_z = cv2.filter2D(dem_clean, -1, kernel, borderType=cv2.BORDER_REFLECT)
+        sum_z2 = cv2.filter2D(dem_clean**2, -1, kernel, borderType=cv2.BORDER_REFLECT)
+        n_neighbors = float(window_size**2 - 1)
+
+        # Expansion: sum(z_k - z_c)^2 = sum(z_k^2) - 2 * z_c * sum(z_k) + n * z_c^2
+        sum_sq_diff = np.maximum(0.0, sum_z2 - 2.0 * dem_clean * sum_z + n_neighbors * (dem_clean**2))
+        tri = np.sqrt(sum_sq_diff)
         return tri
 
     def analyze_terrain(self, dem: np.ndarray, res_x: float, res_y: float) -> Dict[str, Any]:

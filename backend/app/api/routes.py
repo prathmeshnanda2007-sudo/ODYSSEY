@@ -23,10 +23,86 @@ from backend.app.costmap.base import TraversabilityCostmapGenerator
 from backend.app.planning.base import AStarPlanner
 from backend.app.uncertainty.base import GeospatialUncertaintyEstimator
 from backend.app.science.base import GeologicalTargetEvaluator
-from backend.app.ingestion.sample_generator import generate_sample_mars_datasets
+from backend.app.ingestion.sample_generator import generate_sample_mars_datasets, generate_all_mars_presets
 from backend.app.perception.segmentation_engine import TerrainSegmentationEngine
 
 router = APIRouter()
+
+# Martian terrain preset catalog across 8 distinct planetary landforms
+TERRAIN_PRESETS = [
+    {
+        "id": "jezero",
+        "name": "Jezero Crater Rim & Delta",
+        "mission": "Perseverance Rover Site",
+        "region": "Syrtis Major Quadrangle (18.38° N, 77.58° E)",
+        "elevation_range": "-2500m to -2150m",
+        "morphology": "Impact Crater & Ancient Sedimentary River Delta",
+        "description": "Ancient lake basin with prominent inlet delta deposits, steep crater rim ramparts, and eroded central peak.",
+    },
+    {
+        "id": "olympus",
+        "name": "Olympus Mons Caldera",
+        "mission": "Tharsis Volcanic Province",
+        "region": "Tharsis Montes (18.65° N, 226.2° E)",
+        "elevation_range": "+21,200m to +22,800m",
+        "morphology": "Summit Caldera & Stepped Scarp Terraces",
+        "description": "Summit crater of the solar system's largest shield volcano, exhibiting multi-ring collapse scarps and basaltic lava terraces.",
+    },
+    {
+        "id": "valles",
+        "name": "Valles Marineris Chasma",
+        "mission": "Grand Canyon of Mars",
+        "region": "Coprates Chasma (14.0° S, 295.0° E)",
+        "elevation_range": "-4500m to -1200m",
+        "morphology": "Tectonic Rift Canyon & Slump Debris",
+        "description": "Massive east-west trending rift system with 3.3km vertical drop cliffs, landslide slumps, and wind-sculpted canyon floor dunes.",
+    },
+    {
+        "id": "gale",
+        "name": "Gale Crater & Mount Sharp",
+        "mission": "Curiosity Rover Exploration Site",
+        "region": "Aeolis Quadrangle (5.4° S, 137.8° E)",
+        "elevation_range": "-4400m to -1200m",
+        "morphology": "Central Sedimentary Mountain & Northern Moat",
+        "description": "5km high central peak (Aeolis Mons) of layered sedimentary strata surrounded by northern alluvial moat corridor.",
+    },
+    {
+        "id": "dunes",
+        "name": "Noctis Labyrinthus Dunes",
+        "mission": "Labyrinth of the Night",
+        "region": "Syria Planum (7.0° S, 260.0° E)",
+        "elevation_range": "+1800m to +2500m",
+        "morphology": "Intersecting Graben Valleys & Ripple Dunes",
+        "description": "Intersecting tectonic canyon network featuring flat-topped plateau mesas and undulating barchan dune ripples.",
+    },
+    {
+        "id": "chaos",
+        "name": "Hydaspis Chaos Plateaus",
+        "mission": "Xanthe Terra Outflow Source",
+        "region": "Oxia Palus Quadrangle (3.2° N, 332.9° E)",
+        "elevation_range": "-1600m to -1200m",
+        "morphology": "Fractured Chaotic Mesa Blocks & Polygons",
+        "description": "Disrupted landscape of collapsed polygonal mesa blocks, steep graben fracture scarps, and permafrost fracture patterns.",
+    },
+    {
+        "id": "korolev",
+        "name": "Korolev Crater Ice Sheet",
+        "mission": "Northern Polar Glaciology",
+        "region": "Mare Boreum Quadrangle (73.0° N, 165.0° E)",
+        "elevation_range": "-3800m to -1950m",
+        "morphology": "Polar Impact Basin & 1.8km Ice Dome",
+        "description": "Giant polar impact crater containing an undisturbed permanent 1.8km thick water-ice dome with sublimation terrace rings.",
+    },
+    {
+        "id": "rille",
+        "name": "Elysium Sinuous Lava Rille",
+        "mission": "Elysium Volcanic Province",
+        "region": "Elysium Planitia (12.5° N, 155.0° E)",
+        "elevation_range": "+710m to +1050m",
+        "morphology": "Collapsed Lava Tube Channel & Skylights",
+        "description": "Meandering volcanic sinuous channel flanked by basaltic levees and deep collapse skylights into subsurface lava tubes.",
+    },
+]
 
 # In-memory session registry for ingested rasters
 DATASET_REGISTRY: Dict[str, Dict[str, Any]] = {}
@@ -102,6 +178,48 @@ def get_system_status() -> Dict[str, Any]:
             }
             for k, v in DATASET_REGISTRY.items()
         ]
+    }
+
+
+@router.get("/terrains")
+def get_terrain_catalog() -> Dict[str, Any]:
+    """Return catalog of available Martian morphological landforms."""
+    return {
+        "count": len(TERRAIN_PRESETS),
+        "terrains": TERRAIN_PRESETS,
+    }
+
+
+@router.post("/terrains/{terrain_id}")
+def load_terrain_preset(terrain_id: str) -> Dict[str, Any]:
+    """Load and activate a specific planetary terrain morphology preset."""
+    valid_ids = [t["id"] for t in TERRAIN_PRESETS]
+    if terrain_id not in valid_ids:
+        raise HTTPException(status_code=404, detail=f"Terrain '{terrain_id}' not found. Available: {valid_ids}")
+
+    sample_dir = os.path.abspath("datasets/sample")
+    img_path = os.path.join(sample_dir, f"mars_{terrain_id}_img.tif")
+    dem_path = os.path.join(sample_dir, f"mars_{terrain_id}_dem.tif")
+
+    if not os.path.exists(img_path) or not os.path.exists(dem_path):
+        generate_all_mars_presets(sample_dir)
+
+    img_id = f"terrain_{terrain_id}_img"
+    dem_id = f"terrain_{terrain_id}_dem"
+
+    if img_id not in DATASET_REGISTRY:
+        register_raster_file(img_path, "imagery", img_id)
+    if dem_id not in DATASET_REGISTRY:
+        register_raster_file(dem_path, "dem", dem_id)
+
+    preset_info = next(t for t in TERRAIN_PRESETS if t["id"] == terrain_id)
+
+    return {
+        "success": True,
+        "terrain_id": terrain_id,
+        "preset": preset_info,
+        "imagery": DATASET_REGISTRY[img_id],
+        "dem": DATASET_REGISTRY[dem_id],
     }
 
 
@@ -297,7 +415,13 @@ def plan_path_endpoint(
     dem_goal_c = int(np.clip(round(goal_c * scale_c), 0, W - 1))
 
     planner = AStarPlanner()
-    plan_result = planner.plan(costmap, (dem_start_r, dem_start_c), (dem_goal_r, dem_goal_c))
+    plan_result = planner.plan(
+        costmap,
+        (dem_start_r, dem_start_c),
+        (dem_goal_r, dem_goal_c),
+        dem=dem_data,
+        slope=slope,
+    )
 
     plan_dict = plan_result.to_dict()
     if scale_r != 1.0 or scale_c != 1.0:

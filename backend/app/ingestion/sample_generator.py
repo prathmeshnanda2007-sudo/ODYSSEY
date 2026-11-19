@@ -144,6 +144,55 @@ def generate_terrain_pair(
         texture = _load_texture_chip("other", size)
         tint = (210.0, 130.0, 80.0)
 
+    elif terrain_id == "chaos":
+        # 6. Hydaspis Chaos Fracture Plateau & Permafrost Polygons
+        # Lat: 3.2° N, Lon: 332.9° E, Res: 5m/px, Base elevation: -1400m
+        lat, lon, res = 3.2, 332.9, 5.0
+        # Disrupted polygonal block mesas and chaotic collapse fractures
+        block_x = 180.0 * np.sign(np.sin(x_idx / 32.0)) * (np.abs(np.sin(x_idx / 32.0)) ** 0.35)
+        block_y = 180.0 * np.sign(np.cos(y_idx / 36.0)) * (np.abs(np.cos(y_idx / 36.0)) ** 0.35)
+        fracture_scarp = -260.0 * np.exp(-((np.sin(x_idx / 40.0 + y_idx / 50.0)) ** 2) / 0.04)
+        rubble = 30.0 * np.sin(x_idx / 8.0) * np.cos(y_idx / 9.0)
+        noise = np.random.normal(0, 4.0, (size, size))
+        elevation = (-1400.0 + block_x + block_y + fracture_scarp + rubble + noise).astype(np.float32)
+        texture = _load_texture_chip("spider", size)
+        if texture is None:
+            texture = _load_texture_chip("other", size)
+        tint = (210.0, 110.0, 60.0)
+
+    elif terrain_id == "korolev":
+        # 7. Korolev Crater Glacial Ice Sheet Dome
+        # Lat: 73.0° N, Lon: 165.0° E, Res: 6m/px, Base elevation: -3800m
+        lat, lon, res = 73.0, 165.0, 6.0
+        # Deep polar circular impact basin filled with a permanent 1.8km-thick water-ice dome
+        crater_rim = 420.0 * np.exp(-((r_center - 210.0) / 32.0) ** 2)
+        ice_dome = 1850.0 * np.exp(-(r_center / 150.0) ** 2) * (r_center <= 200)
+        terraces = 35.0 * np.sin(r_center / 16.0) * (r_center <= 180)
+        sublimation_pits = -45.0 * (np.sin(x_idx / 12.0) ** 2 * np.cos(y_idx / 12.0) ** 2) * (r_center < 140)
+        noise = np.random.normal(0, 2.0, (size, size))
+        elevation = (-3800.0 + crater_rim + ice_dome + terraces + sublimation_pits + noise).astype(np.float32)
+        texture = _load_texture_chip("swiss cheese", size)
+        tint = (235.0, 225.0, 220.0)
+
+    elif terrain_id == "rille":
+        # 8. Elysium Planitia Volcanic Sinuous Rille & Lava Tubes
+        # Lat: 12.5° N, Lon: 155.0° E, Res: 4m/px, Base elevation: +950m
+        lat, lon, res = 12.5, 155.0, 4.0
+        # Meandering volcanic collapsed lava tube channel flanked by levees
+        sinuous_path = center_x + 95.0 * np.sin(y_idx / 55.0) + 30.0 * np.sin(y_idx / 22.0)
+        rille_dist = np.abs(x_idx - sinuous_path)
+        rille_depth = -240.0 / (1.0 + (rille_dist / 22.0) ** 4)
+        levees = 50.0 * np.exp(-((rille_dist - 28.0) / 8.0) ** 2)
+        # Collapsed roof skylight pit
+        skylight = -90.0 * np.exp(-((x_idx - (center_x + 95.0 * np.sin(256.0 / 55.0))) ** 2 + (y_idx - 256.0) ** 2) / (18.0 ** 2))
+        volcanic_plains = 40.0 * np.sin(x_idx / 45.0)
+        noise = np.random.normal(0, 3.0, (size, size))
+        elevation = (950.0 + rille_depth + levees + skylight + volcanic_plains + noise).astype(np.float32)
+        texture = _load_texture_chip("slope streak", size)
+        if texture is None:
+            texture = _load_texture_chip("impact ejecta", size)
+        tint = (185.0, 105.0, 65.0)
+
     else:  # "dunes" or default
         # 5. Noctis Labyrinthus Linear Dunes & Graben Mesas
         # Lat: -7.0° S, Lon: 260.0° E, Res: 5m/px, Base elevation: +1800m
@@ -208,8 +257,8 @@ def generate_terrain_pair(
 
 
 def generate_all_mars_presets(output_dir: str = "datasets/sample") -> Dict[str, Dict[str, str]]:
-    """Generate all 5 planetary terrain presets and return their file paths."""
-    presets = ["jezero", "olympus", "valles", "gale", "dunes"]
+    """Generate all 8 planetary terrain presets and return their file paths."""
+    presets = ["jezero", "olympus", "valles", "gale", "dunes", "chaos", "korolev", "rille"]
     results = {}
     for pid in presets:
         img_path, dem_path = generate_terrain_pair(pid, output_dir)

@@ -7,16 +7,14 @@ from backend.app.api.routes import get_sample_datasets, load_terrain_preset, pla
 def test_terrain_presets_and_astar_graph():
     sample_dir = os.path.abspath("datasets/sample")
     presets = generate_all_mars_presets(sample_dir)
-    assert "jezero" in presets
-    assert "olympus" in presets
-    assert "valles" in presets
-    assert "gale" in presets
-    assert "dunes" in presets
+    all_8_presets = ["jezero", "olympus", "valles", "gale", "dunes", "chaos", "korolev", "rille"]
+    for pid in all_8_presets:
+        assert pid in presets, f"Preset {pid} missing from generated presets"
 
     # Prime samples
     get_sample_datasets()
 
-    for pid in ["jezero", "olympus", "valles", "gale", "dunes"]:
+    for pid in all_8_presets:
         rec = load_terrain_preset(pid)
         assert rec["success"] is True
         dem_id = rec["dem"]["id"]
@@ -26,7 +24,10 @@ def test_terrain_presets_and_astar_graph():
         assert plan["success"] is True
         assert len(plan["plan"]["path_coords"]) > 0
         assert len(plan["plan"]["elevation_profile"]) > 0
+        assert len(plan["plan"]["slope_profile"]) > 0
+        assert len(plan["plan"]["cost_profile"]) > 0
         assert len(plan["plan"]["explored_nodes"]) > 0
+        assert plan["plan"]["total_cost"] > 0.0
 
 def test_segmentation_resampling_guarantee():
     get_sample_datasets()
