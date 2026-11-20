@@ -1,3 +1,13 @@
+---
+title: ODYSSEY Mars Rover Tactical Intelligence
+emoji: 🪐
+colorFrom: red
+colorTo: orange
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # ODYSSEY: Autonomous Mars Rover Navigation & Planetary Terrain Intelligence Engine
 
 ![ODYSSEY Banner](https://img.shields.io/badge/MISSION-MARS--09%20TACTICAL-red?style=for-the-badge&logo=nasa)
